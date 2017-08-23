@@ -53,7 +53,7 @@ Costmap_Utils::Costmap_Utils(){
 Costmap_Utils::~Costmap_Utils() {}
 
 bool Costmap_Utils::initialize_costmap(){
-	std::string filename = "/home/nvidia/catkin_ws/src/costmap_bridge/hardware_params.xml";	
+	std::string filename = "/home/nvidia/catkin_ws/src/distributed_planner/params/hardware3_vertices.xml";	
 	/*
 	ROS_INFO("writing param file");
 	std::string filename = "/home/nvidia/catkin_ws/src/costmap_bridge/hardware_params.xml";
@@ -71,68 +71,58 @@ bool Costmap_Utils::initialize_costmap(){
 	*/
     cv::FileStorage fs(filename, cv::FileStorage::READ);
     if (!fs.isOpened()){
-        ROS_ERROR("Costmap_Utils::initialize_costmap::Failed to open /home/nvidia/catkin_ws/src/costmap_bridge/hardware_params.xml");
+        ROS_ERROR("Costmap_Utils::initialize_costmap::Failed to open %s", filename.c_str());
         return false;
     }
-	ROS_INFO("Costmap_Utils::initialize_costmap::Opened /home/nvidia/catkin_ws/src/costmap_bridge/hardware_params.xml");
+	ROS_INFO("Costmap_Utils::initialize_costmap::Opened: %s", filename.c_str());
 
-
-    int toll = (int) fs["pay_obstacle_costs"];
-    if(toll == 1){
-    	this->pay_obstacle_costs = true;
-    }
-    else{
-    	this->pay_obstacle_costs = false;
-    }
-    
-    fs["cells_width"] >> this->map_size_cells.x;
-    fs["cells_height"] >> this->map_size_cells.y;
-	ROS_INFO("cells size: %i, %i", this->map_size_cells.x, this->map_size_cells.y);
-	fs["nw_longitude"] >> this->NW_Corner.x;
-	fs["nw_latitude"] >> this->NW_Corner.y;
-	fs["se_longitude"] >> this->SE_Corner.x;
-	fs["se_latitude"] >> this->SE_Corner.y;
+	std::vector<double> corners;
+	fs["corners"] >> corners;
+	this->NW_Corner.x = corners[0];
+	this->NW_Corner.y = corners[1];
+	this->SE_Corner.x = corners[2];
+	this->SE_Corner.y = corners[3];
 	std::string img_name;
 	fs["obstacle_img"] >> img_name;
 	fs.release();
 	ROS_INFO("Costmap_Utils::initialize_costmap::origin: %0.12f / %0.12f", this->NW_Corner.x, this->NW_Corner.y);
 		
 
-	// initialize cells
-	cv::Mat a = cv::Mat::ones( this->map_size_cells.y, this->map_size_cells.x, CV_16S)*this->infFree;
-	this->cells = a.clone();
-	ROS_INFO("cells size: %i, %i", this->cells.cols, this->cells.rows);
-	
-	// seed euclid distance, makes everything faster
-	a = cv::Mat::ones( this->cells.size(), CV_32FC1)*-1;
-	this->euclidDist = a.clone();
-
-
-	// seed into cells satelite information
-	this->seed_img();
-
 	ROS_INFO("nw / se: (%0.6f, %0.6f) / (%0.6f, %0.6f)", this->NW_Corner.x, this->NW_Corner.y, this->SE_Corner.x, this->SE_Corner.y);
 	// set map width / height in meters
 	double d = this->get_global_distance(this->NW_Corner, this->SE_Corner);
 	double b = this->get_global_heading(this->NW_Corner, this->SE_Corner);
-	this->map_size_meters.x = abs(d*sin(b));
-	this->map_size_meters.y = abs(d*cos(b));
+	this->map_size_meters.x = abs(d*cos(b));
+	this->map_size_meters.y = abs(d*sin(b));
 	
-	ROS_INFO("map size: %0.2f, %0.2f (m)", this->map_size_meters.x, this->map_size_meters.y);
+	ROS_INFO("map size: %0.2f, %0.2f (meters)", this->map_size_meters.x, this->map_size_meters.y);
 	
 	// set cells per meter
-	this->meters_per_cell.x = this->map_size_meters.x / double(this->map_size_cells.x);
-	this->meters_per_cell.y = this->map_size_meters.y / double(this->map_size_cells.y);
+	this->meters_per_cell.x = 0.2;
+	this->meters_per_cell.y = 0.2;
 
 	// set meters per cell
-	this->cells_per_meter.x = double(this->map_size_cells.x) / this->map_size_meters.x;
-	this->cells_per_meter.y = double(this->map_size_cells.y) / this->map_size_meters.y;
+	this->cells_per_meter.x = 1.0 / meters_per_cell.x;
+	this->cells_per_meter.y = 1.0 / meters_per_cell.y;
+
+	ROS_INFO("cells per meter: %0.2f, %0.2f", this->cells_per_meter.x, this->cells_per_meter.y);
+	this->map_size_cells.x = ceil(this->map_size_meters.x * this->cells_per_meter.x);
+    this->map_size_cells.y = ceil(this->map_size_meters.y * this->cells_per_meter.y);
+	ROS_INFO("cells size: %i, %i", this->map_size_cells.x, this->map_size_cells.y);
+
+	// initialize cells
+	cv::Mat a = cv::Mat::ones( this->map_size_cells.y, this->map_size_cells.x, CV_16S)*this->infFree;
+	this->cells = a.clone();
+	ROS_INFO("map size: %i, %i (cells)", this->cells.cols, this->cells.rows);
+
+	// seed into cells satelite information
+	this->seed_img();
 
 	if(pay_obstacle_costs){
 		this->obsFree_cost = 0.0;
 		this->infFree_cost = 0.05;
-		this->infOcc_cost = 0.5;
-		this->obsOcc_cost = 10;
+		this->infOcc_cost = 1.0;
+		this->obsOcc_cost = 10.0;
 	}
 	else{
 		this->obsFree_cost = 0.0;
@@ -149,7 +139,7 @@ bool Costmap_Utils::initialize_costmap(){
 }
 
 void Costmap_Utils::seed_img(){
-	cv::Mat seed = cv::imread("/home/nvidia/catkin_ws/src/costmap_bridge/hardware_obstacles.png", CV_LOAD_IMAGE_GRAYSCALE);
+	cv::Mat seed = cv::imread("/home/nvidia/catkin_ws/src/distributed_planner/params/hardware3_obstacles.png", CV_LOAD_IMAGE_GRAYSCALE);
 	if(!seed.data){
 		ROS_ERROR("Costmap::seed_img::Could NOT load img");
 		return;
@@ -160,6 +150,8 @@ void Costmap_Utils::seed_img(){
 	cv::imshow("seed", seed);
 	cv::waitKey(10);
 	*/
+	cv::transpose(seed, seed);  
+	cv::flip(seed, seed,1); //transpose+flip(1)=CW
 	cv::resize(seed, seed, this->cells.size());
 	
 	/*
@@ -182,6 +174,7 @@ void Costmap_Utils::seed_img(){
 			}
 		}
 	}
+	
 	/*
 	ROS_INFO("seeded cells");
 	this->build_cells_plot();
@@ -290,13 +283,9 @@ double Costmap_Utils::get_local_euclidian_distance(const cv::Point2d &a, const c
 }
 
 double Costmap_Utils::get_cells_euclidian_distance(const cv::Point &a, const cv::Point &b){
-	int dx = abs(a.x - b.x);
-	int dy = abs(a.x - b.y);
-
-	if(euclidDist.at<float>(dx,dy) == -1){
-		euclidDist.at<float>(dx,dy) = sqrt(pow(dx,2) + pow(dy,2));
-	}
-	return(euclidDist.at<float>(dx,dy) );
+	double dx = double(a.x - b.x);
+	double dy = double(a.y - b.y);
+	return sqrt(pow(dx,2) + pow(dy,2));
 }
 
 
@@ -334,7 +323,7 @@ bool Costmap_Utils::a_star_path(const cv::Point &sLoc, const cv::Point &gLoc, st
 	// for nbrs
 	int nx[8] = {-1,-1,-1,0, 0,1,1, 1};
 	int ny[8] = { 1, 0,-1,1,-1,1,0,-1};
-	double neighbor_distance[8] = {1.414214, 1, 1.414214, 1, 1, 1.414214, 1, 1.414214};
+	double neighbor_distance[8] = {1.414214, 1.0, 1.414214, 1.0, 1.0, 1.414214, 1.0, 1.414214};
 
 	while(oVec.size() > 0){
 		// find node with lowest fScore and make current
@@ -376,15 +365,16 @@ bool Costmap_Utils::a_star_path(const cv::Point &sLoc, const cv::Point &gLoc, st
 		for(int ni = 0; ni<8; ni++){
 			// potential nbr
 			cv::Point nbr(cLoc.x + nx[ni], cLoc.y + ny[ni] );
+			//ROS_WARN("nbr: %i, %i", int(nbr.x), int(nbr.y));
 			// viable nbr?
-			if(pointOnMat(nbr, cells)){
+			if(pointOnMat(nbr, this->cells)){
 				
 				if(cSet.at<short>(nbr) == 1){ // has it already been eval? in cSet
 					continue;
 				}
 
 				// calc temporary gscore, estimate of total cost
-				double occ_pen = this->get_occ_penalty(nbr);
+				double occ_pen = 0.0;//this->get_occ_penalty(nbr);
 				double ngScore = gScore.at<float>(cLoc) + (1 + occ_pen) * neighbor_distance[ni]; 
 				if(oSet.at<short>(nbr) == 0){
 					oSet.at<short>(nbr) = 1;  // add nbr to open set
@@ -397,12 +387,21 @@ bool Costmap_Utils::a_star_path(const cv::Point &sLoc, const cv::Point &gLoc, st
 				cameFromY.at<short>(nbr) = cLoc.y;
 
 				gScore.at<float>(nbr) = ngScore;
-				if(cells.at<short>(nbr) < 102){
+				//ROS_WARN("ngScore: %0.3f", ngScore);
+
+
+				//if(cells.at<short>(nbr) < 300){
 					fScore.at<float>(nbr) = gScore.at<float>(nbr) + this->a_star_heuristic * this->get_cells_euclidian_distance(gLoc,nbr);
-				}
-				else{
-					fScore.at<float>(nbr)= INFINITY;
-				}
+				//}
+				//else{
+				//	fScore.at<float>(nbr)= INFINITY;
+				//}
+				//ROS_WARN("a* h: %0.3f", this->a_star_heuristic);
+				//ROS_WARN("euclid dist: %0.3f", this->get_cells_euclidian_distance(gLoc,nbr));
+				//ROS_WARN("fscore: %0.3f", gScore.at<float>(nbr) + this->a_star_heuristic * this->get_cells_euclidian_distance(gLoc,nbr));
+			}
+			else{
+				//ROS_WARN("a star point off mat: %i, %i", int(nbr.x), int(nbr.y));
 			}
 		}
 	}
@@ -466,7 +465,7 @@ void Costmap_Utils::add_agent_to_costmap_plot(const cv::Scalar &color, const std
 }
 
 bool pointCompare(const cv::Point &a, const cv::Point &b){
-	if(a.x == b.x && a.y == b.y){
+	if(abs(a.x - b.x) < 1.0 && abs(a.y - b.y) < 1.0){
 		return true;
 	}
 	else{

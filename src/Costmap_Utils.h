@@ -28,7 +28,6 @@ public:
 	// useful stuff
 	cv::Mat cells; // holds occupancy
 	cv::Mat displayPlot; // for plotting cells
-	cv::Mat euclidDist; // array of distances
 	bool pay_obstacle_costs; // am I affected by obstacles?
 
 	cv::Point2d NW_Corner, SE_Corner; // map boundaries

@@ -18,6 +18,7 @@
 #include <move_base_msgs/MoveBaseAction.h>
 #include <actionlib/client/simple_action_client.h> // action server
 #include <visualization_msgs/Marker.h> // for making marks in rviz
+#include <visualization_msgs/MarkerArray.h> // arrays of markers
 #include <costmap_2d/costmap_2d.h>
 #include "geometry_msgs/PoseStamped.h"
 
@@ -86,7 +87,7 @@ public:
 	// publish stuff to RVIZ
 	ros::Publisher marker_publisher;
 	void publish_rviz_path(const std::vector<Point2d> &path);
-	void publishRvizMarker(const Point2d &loc, const double &radius, const int &color, const int &id);
+	visualization_msgs::Marker makeRvizMarker(const Point2d &loc, const double &radius, const int &color, const int &id);
 
 	bool travelling, waiting, emergency_stopped;
 
