@@ -179,7 +179,7 @@ void Costmap_Utils::update_cells( const nav_msgs::OccupancyGrid& cost_in){
 	
 	for(size_t i=0; i<cost_in.data.size(); i++){
 		// point in the array
-		cv::Point p_a(floor( i / height), i % width);
+		cv::Point p_a( i % width, floor( i / height) );
 		// point in location
 		cv::Point2d p_l(double(p_a.x) * res + double(origin.x), double(p_a.y) * res + double(origin.y));
 		// point in the costmap
@@ -211,8 +211,8 @@ void Costmap_Utils::update_cells( const nav_msgs::OccupancyGrid& cost_in){
 		 	cells.at<short>(p_c) = obsFree;
 		}
 		else{
-			ROS_WARN("costmap add obstacles is off");
-	 		//cells.at<short>(p_c) = obsOccupied;
+			//ROS_WARN("costmap add obstacles is off");
+	 		cells.at<short>(p_c) = obsOccupied;
 		}
 	}
 }

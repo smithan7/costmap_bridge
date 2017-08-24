@@ -33,29 +33,29 @@ Costmap::Costmap(ros::NodeHandle nHandle, const int &test_environment_number, co
 	this->status_time = ros::Time::now(); // when did I last publish a status report
 	this->status_interval = ros::Duration(1.0);
 	this->act_time = ros::Time::now();
-	this->act_interval = ros::Duration(5.0); // how often should I replan if I don't get an update or request
+	this->act_interval = ros::Duration(1.0); // how often should I replan if I don't get an update or request
 	this->plot_time = ros::Time::now(); // when did I last display the plot
 	this->plot_interval = ros::Duration(1.0); // plot at 1 Hz
 
 	/////////////////////// Subscribers /////////////////////////////
 	// update the costmap
-	this->costmap_subscriber = nHandle.subscribe("/rtabmap/grid_map", 0, &Costmap::costmap_callback, this);
+	this->costmap_subscriber = nHandle.subscribe("/rtabmap/grid_map", 1, &Costmap::costmap_callback, this);
 	// get team member map updates
-	this->costmap_update_subscriber = nHandle.subscribe("/team_map_update", 0, &Costmap::costmap_update_callback, this);
+	this->costmap_update_subscriber = nHandle.subscribe("/team_map_update", 1, &Costmap::costmap_update_callback, this);
 	// quad status callback
-	this->quad_status_subscriber = nHandle.subscribe("/dji_bridge_status", 0, &Costmap::DJI_Bridge_status_callback, this);
+	this->quad_status_subscriber = nHandle.subscribe("/dji_bridge_status", 1, &Costmap::DJI_Bridge_status_callback, this);
 	// get goal from Dist MCTS Goal callback
-	this->dist_planner_goal_subscriber = nHandle.subscribe("/dist_mcts_goal", 0, &Costmap::dist_planner_goal_callback, this);
+	this->dist_planner_goal_subscriber = nHandle.subscribe("/dist_mcts_goal", 1, &Costmap::dist_planner_goal_callback, this);
 
 	/////////////////////// Publishers //////////////////////////////
 	// provide team with my observations
-	this->costmap_update_publisher = nHandle.advertise<custom_messages::Costmap_Bridge_Team_Map_Update_MSG>("/team_map_update", 10);
+	this->costmap_update_publisher = nHandle.advertise<custom_messages::Costmap_Bridge_Team_Map_Update_MSG>("/team_map_update", 1);
 	// tell the DJI Bridge where I am going
-	this->path_publisher =  nHandle.advertise<custom_messages::DJI_Bridge_Travel_Path_MSG>("/travel_path", 10);
+	this->path_publisher =  nHandle.advertise<custom_messages::DJI_Bridge_Travel_Path_MSG>("/travel_path", 1);
 	// tell everyone my status
-	this->status_publisher = nHandle.advertise<custom_messages::Costmap_Bridge_Status_MSG>("/costmap_bridge_status", 10);
+	this->status_publisher = nHandle.advertise<custom_messages::Costmap_Bridge_Status_MSG>("/costmap_bridge_status", 1);
 	// publish marker to RVIZ
-	this->marker_publisher = nHandle.advertise<visualization_msgs::MarkerArray>("visualization_marker", 10);
+	this->marker_publisher = nHandle.advertise<visualization_msgs::MarkerArray>("visualization_marker", 1);
 
 
 	// really initialize costmap
@@ -69,11 +69,11 @@ Costmap::~Costmap(){
 
 void Costmap::costmap_callback(const nav_msgs::OccupancyGrid& cost_in ){
 	// update my costmap
-	ROS_INFO("updating costmap");
+	//ROS_INFO("updating costmap");
 	this->utils->update_cells( cost_in );
 	this->costmapInitialized = true;
 	// plan path on costmap and publish it to the quad
-	ROS_INFO("planning path");
+	//ROS_INFO("planning path");
 	this->find_path_and_publish();
 
 }
