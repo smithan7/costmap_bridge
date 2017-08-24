@@ -16,7 +16,7 @@ std::vector<cv::Point> get_image_points_at_intensity(const cv::Mat &image, const
 double lin_interp(const double &p_min, const double &p_max, const double &p);
 
 
-Costmap_Utils::Costmap_Utils(){
+Costmap_Utils::Costmap_Utils(const int &test_environment_number, const int &agent_index){
 
 	// I need to be initialized
 	this->need_initialization = true;
@@ -35,9 +35,6 @@ Costmap_Utils::Costmap_Utils(){
 	this->obsOccupied = 201;
 	this->infOccupied = 202;
 
-	// A* costs for travelling over everything
-
-
 	// annoying but it works to seed plot colors
 	cv::Vec3b a(255,255,255);
 	this->cObsFree = a;
@@ -48,61 +45,42 @@ Costmap_Utils::Costmap_Utils(){
 	a = cv::Vec3b(50,50,50);
 	this->cInfOccupied = a;
 
-}
-
-Costmap_Utils::~Costmap_Utils() {}
-
-bool Costmap_Utils::initialize_costmap(){
-	std::string filename = "/home/nvidia/catkin_ws/src/distributed_planner/params/hardware3_vertices.xml";	
-
-    cv::FileStorage fs(filename, cv::FileStorage::READ);
-    if (!fs.isOpened()){
-        ROS_ERROR("Costmap_Utils::initialize_costmap::Failed to open %s", filename.c_str());
-        return false;
+	char vert_file[200];
+	sprintf(vert_file, "/home/nvidia/catkin_ws/src/distributed_planner/params/hardware%i_vertices.xml", test_environment_number);
+    cv::FileStorage f_verts(vert_file, cv::FileStorage::READ);
+    if (!f_verts.isOpened()){
+        ROS_ERROR("Dist planner::World::init::Failed to open %s", vert_file);
+        return;
     }
-	ROS_INFO("Costmap_Utils::initialize_costmap::Opened: %s", filename.c_str());
-
+	ROS_INFO("Dist planner::World::init::Opened: %s", vert_file);
+    
 	std::vector<double> corners;
-	fs["corners"] >> corners;
+	f_verts["corners"] >> corners;
 	this->NW_Corner.x = corners[0];
 	this->NW_Corner.y = corners[1];
 	this->SE_Corner.x = corners[2];
 	this->SE_Corner.y = corners[3];
-	std::string img_name;
-	fs["obstacle_img"] >> img_name;
-	fs.release();
-	ROS_INFO("Costmap_Utils::initialize_costmap::origin: %0.12f / %0.12f", this->NW_Corner.x, this->NW_Corner.y);
-		
 
-	ROS_INFO("nw / se: (%0.6f, %0.6f) / (%0.6f, %0.6f)", this->NW_Corner.x, this->NW_Corner.y, this->SE_Corner.x, this->SE_Corner.y);
-	// set map width / height in meters
 	this->map_size_meters = this->global_to_local(this->SE_Corner);
 
 	
 	ROS_INFO("map size: %0.2f, %0.2f (meters)", this->map_size_meters.x, this->map_size_meters.y);
+
+	char agent_file[200];
+	sprintf(agent_file, "/home/nvidia/catkin_ws/src/distributed_planner/params/agent%i_params.xml", agent_index);
+    cv::FileStorage f_agent(agent_file, cv::FileStorage::READ);
+    if (!f_agent.isOpened()){
+        ROS_ERROR("Costmap_Bridge::Costmap::init::Failed to open %s", agent_file);
+        return;
+    }
+	ROS_INFO("Costmap_Bridge::Costmap::init::Opened: %s", agent_file);
+    
+
+	int pay_obstacle_costs = 0;
+	f_agent["pay_obstacle_cost"] >> this->pay_obstacle_costs;
+	f_agent.release();
 	
-	// set cells per meter
-	this->meters_per_cell.x = 0.2;
-	this->meters_per_cell.y = 0.2;
-
-	// set meters per cell
-	this->cells_per_meter.x = 1.0 / meters_per_cell.x;
-	this->cells_per_meter.y = 1.0 / meters_per_cell.y;
-
-	ROS_INFO("cells per meter: %0.2f, %0.2f", this->cells_per_meter.x, this->cells_per_meter.y);
-	this->map_size_cells.x = ceil(this->map_size_meters.x * this->cells_per_meter.x);
-    this->map_size_cells.y = ceil(this->map_size_meters.y * this->cells_per_meter.y);
-	ROS_INFO("cells size: %i, %i", this->map_size_cells.x, this->map_size_cells.y);
-
-	// initialize cells
-	cv::Mat a = cv::Mat::ones( this->map_size_cells.y, this->map_size_cells.x, CV_16S)*this->infFree;
-	this->cells = a.clone();
-	ROS_INFO("map size: %i, %i (cells)", this->cells.cols, this->cells.rows);
-
-	// seed into cells satelite information
-	this->seed_img();
-
-	if(pay_obstacle_costs){
+	if(pay_obstacle_costs == 1){
 		this->obsFree_cost = 0.0;
 		this->infFree_cost = 0.05;
 		this->infOcc_cost = 1.0;
@@ -114,13 +92,9 @@ bool Costmap_Utils::initialize_costmap(){
 		this->infOcc_cost = 0.0;
 		this->obsOcc_cost = 0.0;
 	}
-
-	// announce I am initialized!
-	this->need_initialization = false;
-
-	ROS_INFO("Costmap_Utils::initialize_costmap::complete");
-	return true;
 }
+
+Costmap_Utils::~Costmap_Utils() {}
 
 void Costmap_Utils::seed_img(){
 	cv::Mat seed = cv::imread("/home/nvidia/catkin_ws/src/distributed_planner/params/hardware3_obstacles.png", CV_LOAD_IMAGE_GRAYSCALE);
@@ -168,7 +142,6 @@ void Costmap_Utils::seed_img(){
 }
 
 void Costmap_Utils::update_cells( const nav_msgs::OccupancyGrid& cost_in){
-	
 	int width = cost_in.info.width; // number of cells wide
 	int height = cost_in.info.height; // number of cells tall
 	double res = cost_in.info.resolution; // m/cell
@@ -177,10 +150,33 @@ void Costmap_Utils::update_cells( const nav_msgs::OccupancyGrid& cost_in){
 	origin.y = cost_in.info.origin.position.y;
 
 	// if I haven't been initialized then don't include
-	if( this->need_initialization ){
-		return;
+	if( this->need_initialization){//  || this->cells_per_meter != res){
+		// set cells per meter
+		this->meters_per_cell = res;
+
+		// set meters per cell
+		this->cells_per_meter = 1.0 / this->meters_per_cell;
+
+		ROS_INFO("cells per meter: %0.2f", this->cells_per_meter);
+		this->map_size_cells.x = ceil(this->map_size_meters.x * this->cells_per_meter);
+		this->map_size_cells.y = ceil(this->map_size_meters.y * this->cells_per_meter);
+		ROS_INFO("cells size: %i, %i", this->map_size_cells.x, this->map_size_cells.y);
+
+		// initialize cells
+		cv::Mat a = cv::Mat::ones( this->map_size_cells.y, this->map_size_cells.x, CV_16S)*this->infFree;
+		this->cells = a.clone();
+		ROS_INFO("map size: %i, %i (cells)", this->cells.cols, this->cells.rows);
+
+		// seed into cells satelite information
+		this->seed_img();
+
+		// announce I am initialized!
+		this->need_initialization = false;
+
+		ROS_INFO("Costmap_Utils::initialize_costmap::complete");	
 	}
 
+	ROS_INFO("width / height: %i, / %i", width, height);
 	for(size_t i=0; i<cost_in.data.size(); i++){
 		// point in the array
 		cv::Point p_a(floor( i / width ), i % height);
@@ -189,6 +185,9 @@ void Costmap_Utils::update_cells( const nav_msgs::OccupancyGrid& cost_in){
 		// point in the costmap
 		cv::Point p_c;
 		local_to_cells(p_l, p_c);
+		if(!pointOnMat(p_c, this->cells)){
+			continue;
+		}
 
 		if(cost_in.data[i] == ros_unknown){
 			continue;
@@ -246,15 +245,15 @@ void Costmap_Utils::cells_to_local_path(const std::vector<cv::Point> &cells_path
 
 void Costmap_Utils::cells_to_local(const cv::Point &cell, cv::Point2d &loc){
 	// convert from cell to local
-	loc.x = double(cell.x) * this->meters_per_cell.x;
-	loc.y = double(cell.y) * this->meters_per_cell.y;
+	loc.x = double(cell.x) * this->meters_per_cell;
+	loc.y = double(cell.y) * this->meters_per_cell;
 }
 
 
 void Costmap_Utils::local_to_cells(const cv::Point2d &loc, cv::Point &cell){
 	// move from local x/y meters to costmap cell
-	cell.x = round(this->cells_per_meter.x * loc.x);
-	cell.y = round(this->cells_per_meter.y * loc.y);
+	cell.x = round(this->cells_per_meter * loc.x);
+	cell.y = round(this->cells_per_meter * loc.y);
 }
 
 double Costmap_Utils::get_local_heading(const cv::Point2d &l1, const cv::Point2d &l2){

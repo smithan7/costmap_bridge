@@ -51,7 +51,7 @@ using namespace cv;
 class Costmap{
 public:
 
-	Costmap(ros::NodeHandle nh);//, std::string param_file);
+	Costmap(ros::NodeHandle nh, const int &test_environment_number, const int &agent_index);
 	~Costmap();
 
 	// subscribe to zed costmap
@@ -114,7 +114,7 @@ public:
 	vector<cv::Point> cells_path;
 
 	// costmap class stuff
-	Costmap_Utils utils;
+	Costmap_Utils* utils;
 };
 
 #endif /* SRC_Costmap_H_ */

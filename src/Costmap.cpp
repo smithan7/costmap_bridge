@@ -11,7 +11,7 @@
 using namespace std;
 using namespace cv;
 
-Costmap::Costmap(ros::NodeHandle nHandle){//, std::string param_file){
+Costmap::Costmap(ros::NodeHandle nHandle, const int &test_environment_number, const int &agent_index){//, std::string param_file){
 
 	ROS_INFO("Costmap Bridge::Costmap::Costmap: initializing");		
 
@@ -59,21 +59,23 @@ Costmap::Costmap(ros::NodeHandle nHandle){//, std::string param_file){
 
 
 	// really initialize costmap
-	this->costmapInitialized = this->utils.initialize_costmap();// param_file );
+	this->costmapInitialized = false;
+	this->utils = new Costmap_Utils(test_environment_number, agent_index);
 }
 
-Costmap::~Costmap(){}
+Costmap::~Costmap(){
+	delete this->utils;
+}
 
 void Costmap::costmap_callback(const nav_msgs::OccupancyGrid& cost_in ){
-	if( !this->costmapInitialized ){ // have i initialized the costmap?
-		ROS_ERROR("Costmap_Bridge::Costmap::costmap_callback::costmap not initialized");
-		return;
-	}
-	
 	// update my costmap
-	this->utils.update_cells( cost_in );
+	ROS_INFO("updating costmap");
+	this->utils->update_cells( cost_in );
+	this->costmapInitialized = true;
 	// plan path on costmap and publish it to the quad
+	ROS_INFO("planning path");
 	this->find_path_and_publish();
+
 }
 
 void Costmap::publish_map_updates(const std::vector<cv::Point> &u_pts, const std::vector<int> &u_types){
@@ -99,33 +101,33 @@ void Costmap::costmap_update_callback( const custom_messages::Costmap_Bridge_Tea
 	std::vector<int> ys = update.ys;
 	std::vector<int> tps = update.tps;
 	
-	this->utils.team_map_update(xs, ys, tps);
+	this->utils->team_map_update(xs, ys, tps);
 }
 
 void Costmap::DJI_Bridge_status_callback( const custom_messages::DJI_Bridge_Status_MSG& status_in){	
 	locationInitialized = true;
 	this->local_loc = Point2d(status_in.local_x, status_in.local_y);
 	cv:;Point t;
-	this->utils.local_to_cells(this->local_loc, t);
+	this->utils->local_to_cells(this->local_loc, t);
 
-	if(this->utils.point_in_cells(t)){
+	if(this->utils->point_in_cells(t)){
 		this->cell_loc = t;
 	}
 	else{
 		ROS_ERROR("Costmap_Bridge::Costmap::DJI_Bridge_Status::off map");
-		ROS_ERROR("     cells.size( %i, %i ) and point (%i, %i)", this->utils.cells.cols, this->utils.cells.rows, t.x, t.y);		
+		ROS_ERROR("     cells.size( %i, %i ) and point (%i, %i)", this->utils->cells.cols, this->utils->cells.rows, t.x, t.y);		
 		return;	
 	}
 
 	if(ros::Time::now() - this->plot_time > this->plot_interval){
 		this->plot_time = ros::Time::now();
 
-		this->utils.build_cells_plot();
+		this->utils->build_cells_plot();
 		Scalar blue = Scalar(255,0,0);
-		this->utils.add_agent_to_costmap_plot( blue, this->cells_path, this->cell_loc);
+		this->utils->add_agent_to_costmap_plot( blue, this->cells_path, this->cell_loc);
 		Scalar orange = Scalar(0,165,255);
-		this->utils.add_agent_to_costmap_plot( orange, this->cells_path, this->cell_goal);
-		this->utils.display_costmap();
+		this->utils->add_agent_to_costmap_plot( orange, this->cells_path, this->cell_goal);
+		this->utils->display_costmap();
 	}
 
 	if(ros::Time::now() - this->status_time > this->status_interval){
@@ -142,9 +144,9 @@ void Costmap::dist_planner_goal_callback( const custom_messages::DJI_Bridge_Trav
 	for(size_t i=0; i<path_in.local_xs.size(); i++){
 		Point2d l_wp(path_in.local_xs[i], path_in.local_ys[i]);
 		Point c_wp;
-		this->utils.local_to_cells(l_wp, c_wp);
+		this->utils->local_to_cells(l_wp, c_wp);
 
-		if(!this->utils.point_in_cells(c_wp)){
+		if(!this->utils->point_in_cells(c_wp)){
 			ROS_ERROR("Costmap_Bridge::Dist_Planner_Callback::Wp off map");
 			return;
 		}
@@ -173,7 +175,7 @@ void Costmap::publish_travel_path(const std::vector<Point2d> &path){
 		if(i < path.size() - 1){
 			// if not last point, heading is from current to next
 			next_local = path[i+1];
-			double heading = this->utils.get_local_heading(next_local, local);
+			double heading = this->utils->get_local_heading(next_local, local);
 			path_msg.headings.push_back(heading);
 		}
 		else{
@@ -211,7 +213,7 @@ void Costmap::find_path_and_publish(){
 			ROS_WARN("Fake Goal");
 			this->wp_path.push_back(this->local_goal); // this nneds to be ERASED for trials
 			this->wp_path.push_back(cv::Point(25,50));
-			this->utils.local_to_cells(this->local_goal, this->cell_goal);
+			this->utils->local_to_cells(this->local_goal, this->cell_goal);
 			ROS_INFO("local_goal: %.2f, %.2f", this->local_goal.x, this->local_goal.y);
 			ROS_INFO("local_loc: %.2f, %.2f", this->local_loc.x, this->local_loc.y);
 						
@@ -221,15 +223,15 @@ void Costmap::find_path_and_publish(){
 			if(this->find_path(this->cells_path)){
 				ROS_INFO("Path length: %i", int(this->cells_path.size()));
         		std::vector<Point2d> local_path;
-        		this->utils.cells_to_local_path(this->cells_path, local_path);
+        		this->utils->cells_to_local_path(this->cells_path, local_path);
 
 				// assemble plot and display it
-				this->utils.build_cells_plot();
+				this->utils->build_cells_plot();
 				Scalar blue = Scalar(255,0,0);
-				this->utils.add_agent_to_costmap_plot( blue, this->cells_path, this->cell_loc);
+				this->utils->add_agent_to_costmap_plot( blue, this->cells_path, this->cell_loc);
 				Scalar orange = Scalar(0,165,255);
-				this->utils.add_agent_to_costmap_plot( orange, this->cells_path, this->cell_goal);
-				this->utils.display_costmap();
+				this->utils->add_agent_to_costmap_plot( orange, this->cells_path, this->cell_goal);
+				this->utils->display_costmap();
 
         		this->publish_travel_path(local_path);
         		this->publish_rviz_path(local_path);	
@@ -250,10 +252,10 @@ bool Costmap::find_path( std::vector<cv::Point> &cells_path ){
 	for(size_t i=0; i<this->wp_path.size(); i++){
 		// get end point in cells space
 		Point e_wp_cells;
-		this->utils.local_to_cells(this->wp_path[i], e_wp_cells);
+		this->utils->local_to_cells(this->wp_path[i], e_wp_cells);
 		std::vector<Point> cp;
 		double length=0.0;
-		if(this->utils.a_star_path(s_wp_cells, e_wp_cells, cp, length)){
+		if(this->utils->a_star_path(s_wp_cells, e_wp_cells, cp, length)){
 			// a* found a path 
 			if(cp.size() > 1){
 				cells_path.insert(cells_path.end(), cp.begin()+1, cp.end());

@@ -46,18 +46,16 @@ public:
 	bool need_initialization;
 	cv::Point map_size_cells;
 	cv::Point2d map_size_meters;
-	cv::Point2d cells_per_meter, meters_per_cell;
+	double cells_per_meter, meters_per_cell;
 
 	// 1 = free space // 2 = inferred free space // 3 = domFree
 	// 101 = unknown
 	// 201 = wall // 202 = inferred wall // 203 = inflated wall
 
 	// functions
-	Costmap_Utils();
+	Costmap_Utils(const int &test_environment_number, const int &agent_index);
 	virtual ~Costmap_Utils();
 
-	// set map size
-    bool initialize_costmap();
     // use satelite info to seed the exploration
 	void seed_img();
     // update cells with observation

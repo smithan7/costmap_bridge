@@ -11,9 +11,10 @@ int main(int argc, char *argv[])
 	// initialization
 	ros::init(argc, argv, "Costmap");
 	ros::NodeHandle nHandle("~");
-	std::string param_file = "/home/nvidia/catkin_ws/src/costmap_bridge/hardware_params.xml";
+	int test_environment_number = 3;
+	int agent_index = 0;
 	ROS_INFO("Costmap_Bridge::initializing costmap");
-	Costmap *costmap = new Costmap(nHandle);//, param_file);
+	Costmap *costmap = new Costmap(nHandle, test_environment_number, agent_index);
 
 	// return the control to ROS
 	ros::spin();
