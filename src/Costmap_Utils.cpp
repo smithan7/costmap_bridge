@@ -176,15 +176,30 @@ void Costmap_Utils::update_cells( const nav_msgs::OccupancyGrid& cost_in){
 		ROS_INFO("Costmap_Utils::initialize_costmap::complete");	
 	}
 
-	ROS_INFO("width / height: %i, / %i", width, height);
+	
 	for(size_t i=0; i<cost_in.data.size(); i++){
 		// point in the array
-		cv::Point p_a(floor( i / width ), i % height);
+		cv::Point p_a(floor( i / height), i % width);
 		// point in location
 		cv::Point2d p_l(double(p_a.x) * res + double(origin.x), double(p_a.y) * res + double(origin.y));
 		// point in the costmap
 		cv::Point p_c;
-		local_to_cells(p_l, p_c);
+		this->local_to_cells(p_l, p_c);
+
+		/*
+		ROS_INFO("data length: %i", int(cost_in.data.size()));
+		ROS_INFO("width / height: %i, / %i", width, height);
+		ROS_INFO("origin: %.2f, %.2f", origin.x, origin.y);
+		ROS_INFO("res (m/c): %.2f", res);
+		ROS_INFO("map size (m): %.2f, %.2f", this->map_size_meters.x, this->map_size_meters.y);
+		ROS_INFO("cells.size(): %i, %i", this->map_size_cells.x, this->map_size_cells.y);		
+		ROS_INFO("cells cols and rows: %i, %i", this->cells.cols, this->cells.rows);
+		ROS_WARN("i: %i", int(i));
+		ROS_WARN("p_a: %i, %i", p_a.x, p_a.y);
+		ROS_WARN("p_l: %.2f, %.2f", p_l.x, p_l.y);
+		ROS_WARN("p_c: %i, %i", p_c.x, p_c.y);
+		cv::waitKey(0);
+		*/
 		if(!pointOnMat(p_c, this->cells)){
 			continue;
 		}
@@ -196,8 +211,9 @@ void Costmap_Utils::update_cells( const nav_msgs::OccupancyGrid& cost_in){
 		 	cells.at<short>(p_c) = obsFree;
 		}
 		else{
-	 		cells.at<short>(p_c) = obsOccupied;
-	 	}
+			ROS_WARN("costmap add obstacles is off");
+	 		//cells.at<short>(p_c) = obsOccupied;
+		}
 	}
 }
 
@@ -357,7 +373,7 @@ bool Costmap_Utils::a_star_path(const cv::Point &sLoc, const cv::Point &gLoc, st
 				}
 
 				// calc temporary gscore, estimate of total cost
-				double occ_pen = 0.0;//this->get_occ_penalty(nbr);
+				double occ_pen = this->get_occ_penalty(nbr);
 				double ngScore = gScore.at<float>(cLoc) + (1 + occ_pen) * neighbor_distance[ni]; 
 				if(oSet.at<short>(nbr) == 0){
 					oSet.at<short>(nbr) = 1;  // add nbr to open set
@@ -373,12 +389,12 @@ bool Costmap_Utils::a_star_path(const cv::Point &sLoc, const cv::Point &gLoc, st
 				//ROS_WARN("ngScore: %0.3f", ngScore);
 
 
-				//if(cells.at<short>(nbr) < 300){
+				if(cells.at<short>(nbr) < 127){
 					fScore.at<float>(nbr) = gScore.at<float>(nbr) + this->a_star_heuristic * this->get_cells_euclidian_distance(gLoc,nbr);
-				//}
-				//else{
-				//	fScore.at<float>(nbr)= INFINITY;
-				//}
+				}
+				else{
+					fScore.at<float>(nbr)= INFINITY;
+				}
 				//ROS_WARN("a* h: %0.3f", this->a_star_heuristic);
 				//ROS_WARN("euclid dist: %0.3f", this->get_cells_euclidian_distance(gLoc,nbr));
 				//ROS_WARN("fscore: %0.3f", gScore.at<float>(nbr) + this->a_star_heuristic * this->get_cells_euclidian_distance(gLoc,nbr));

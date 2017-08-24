@@ -105,17 +105,20 @@ void Costmap::costmap_update_callback( const custom_messages::Costmap_Bridge_Tea
 }
 
 void Costmap::DJI_Bridge_status_callback( const custom_messages::DJI_Bridge_Status_MSG& status_in){	
-	locationInitialized = true;
-	this->local_loc = Point2d(status_in.local_x, status_in.local_y);
-	cv:;Point t;
-	this->utils->local_to_cells(this->local_loc, t);
+	
+	cv::Point2d l = Point2d(status_in.local_x, status_in.local_y);
+	cv:;Point c;
+	this->utils->local_to_cells(l, c);
 
-	if(this->utils->point_in_cells(t)){
-		this->cell_loc = t;
+	if(this->utils->point_in_cells(c)){
+		this->cell_loc = c;
+		this->local_loc = l;
+		this->locationInitialized = true;	
 	}
 	else{
+		this->locationInitialized = false;
 		ROS_ERROR("Costmap_Bridge::Costmap::DJI_Bridge_Status::off map");
-		ROS_ERROR("     cells.size( %i, %i ) and point (%i, %i)", this->utils->cells.cols, this->utils->cells.rows, t.x, t.y);		
+		ROS_ERROR("     cells.size( %i, %i ) and point (%i, %i)", this->utils->cells.cols, this->utils->cells.rows, c.x, c.y);		
 		return;	
 	}
 
