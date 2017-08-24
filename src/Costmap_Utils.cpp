@@ -54,21 +54,7 @@ Costmap_Utils::~Costmap_Utils() {}
 
 bool Costmap_Utils::initialize_costmap(){
 	std::string filename = "/home/nvidia/catkin_ws/src/distributed_planner/params/hardware3_vertices.xml";	
-	/*
-	ROS_INFO("writing param file");
-	std::string filename = "/home/nvidia/catkin_ws/src/costmap_bridge/hardware_params.xml";
-    cv::FileStorage fr(filename, cv::FileStorage::WRITE);
-    fr << "cells_width" << 1000;
-    fr << "cells_height" << 1000;
-	fr << "nw_longitude" <<-123.251004;
-	fr << "nw_latitude" << 44.539847;
-	fr << "se_longitude" << -123.247446;
-	fr << "se_latitude" << 44.538552;
-    fr << "obstacle_image" << "/home/nvidia/catkin_ws/src/costmap_bridge/hardware_obstacles.png";
-    fr << "pay_obstacle_costs" << 1;
-    fr.release();
-    ROS_INFO("wrote param file");
-	*/
+
     cv::FileStorage fs(filename, cv::FileStorage::READ);
     if (!fs.isOpened()){
         ROS_ERROR("Costmap_Utils::initialize_costmap::Failed to open %s", filename.c_str());
@@ -90,10 +76,8 @@ bool Costmap_Utils::initialize_costmap(){
 
 	ROS_INFO("nw / se: (%0.6f, %0.6f) / (%0.6f, %0.6f)", this->NW_Corner.x, this->NW_Corner.y, this->SE_Corner.x, this->SE_Corner.y);
 	// set map width / height in meters
-	double d = this->get_global_distance(this->NW_Corner, this->SE_Corner);
-	double b = this->get_global_heading(this->NW_Corner, this->SE_Corner);
-	this->map_size_meters.x = abs(d*cos(b));
-	this->map_size_meters.y = abs(d*sin(b));
+	this->map_size_meters = this->global_to_local(this->SE_Corner);
+
 	
 	ROS_INFO("map size: %0.2f, %0.2f (meters)", this->map_size_meters.x, this->map_size_meters.y);
 	
@@ -183,38 +167,38 @@ void Costmap_Utils::seed_img(){
 	*/
 }
 
-void Costmap_Utils::update_cells( const std::vector<int8_t> &occupancy_grid_array, std::vector<cv::Point> &u_pts, std::vector<int> &u_types){
+void Costmap_Utils::update_cells( const nav_msgs::OccupancyGrid& cost_in){
 	
-	u_pts.clear();
-	u_types.clear();
+	int width = cost_in.info.width; // number of cells wide
+	int height = cost_in.info.height; // number of cells tall
+	double res = cost_in.info.resolution; // m/cell
+	cv::Point2d origin; // where is the origin in meters
+	origin.x = cost_in.info.origin.position.x;
+	origin.y = cost_in.info.origin.position.y;
+
 	// if I haven't been initialized then don't include
 	if( this->need_initialization ){
 		return;
 	}
 
-	for(size_t i=0; i<occupancy_grid_array.size(); i++){
-		 cv::Point p = get_cell_index( i );
+	for(size_t i=0; i<cost_in.data.size(); i++){
+		// point in the array
+		cv::Point p_a(floor( i / width ), i % height);
+		// point in location
+		cv::Point2d p_l(double(p_a.x) * res + double(origin.x), double(p_a.y) * res + double(origin.y));
+		// point in the costmap
+		cv::Point p_c;
+		local_to_cells(p_l, p_c);
 
-		if(occupancy_grid_array[i] == ros_unknown){
-		 	// do nothing!!!!
-		 	//if( cells.at<short>(p) != unknown){
-		 	//	cells.at<short>(p) = unknown;
-		 	//}
+		if(cost_in.data[i] == ros_unknown){
+			continue;
 		}
-		else if(occupancy_grid_array[i] < ros_occupied / 4){//ros_free){
-		 	if( cells.at<short>(p) != obsFree){
-		 		cells.at<short>(p) = obsFree;
-		 		u_pts.push_back(p);
-		 		u_types.push_back(this->obsFree);
-		 	}
+		else if(cost_in.data[i] < ros_occupied / 4){ // ros free
+		 	cells.at<short>(p_c) = obsFree;
 		}
 		else{
-		 	if( cells.at<short>(p) != obsOccupied){
-		 		cells.at<short>(p) = obsOccupied;
-		 		u_pts.push_back(p);
-		 		u_types.push_back(this->obsOccupied);
-		 	}
-		}
+	 		cells.at<short>(p_c) = obsOccupied;
+	 	}
 	}
 }
 
@@ -498,6 +482,17 @@ std::vector<cv::Point> get_image_points_at_intensity(const cv::Mat &image, const
 double lin_interp(const double &p_min, const double &p_max, const double &p){
 	return (p-p_min)/(p_max-p_min);
 }
+
+cv::Point2d Costmap_Utils::global_to_local(const cv::Point2d &loc){
+	double b = this->get_global_heading(this->NW_Corner, loc);
+	double d = this->get_global_distance(this->NW_Corner, loc);
+	cv::Point2d l;
+	l.x = -d*cos(b);
+	l.y = d*sin(b);
+
+	return l;
+}
+
 
 double Costmap_Utils::get_global_distance(const cv::Point2d &g1, const cv::Point2d &g2){
 	double R = 6378136.6; // radius of the earth in meters

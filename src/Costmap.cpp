@@ -65,21 +65,13 @@ Costmap::Costmap(ros::NodeHandle nHandle){//, std::string param_file){
 Costmap::~Costmap(){}
 
 void Costmap::costmap_callback(const nav_msgs::OccupancyGrid& cost_in ){
-
-	ROS_INFO("OSU::Map height/width: %d / %d", cost_in.info.height, cost_in.info.width);
-
 	if( !this->costmapInitialized ){ // have i initialized the costmap?
 		ROS_ERROR("Costmap_Bridge::Costmap::costmap_callback::costmap not initialized");
 		return;
 	}
 	
 	// update my costmap
-	//vector<int8_t> occGrid = cost_in.data;
-	std::vector<cv::Point> u_pts;
-	std::vector<int> u_types;
-	this->utils.update_cells( cost_in.data, u_pts, u_types );
-	// publish my updates to team
-	this->publish_map_updates(u_pts, u_types);
+	this->utils.update_cells( cost_in );
 	// plan path on costmap and publish it to the quad
 	this->find_path_and_publish();
 }

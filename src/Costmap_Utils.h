@@ -8,12 +8,18 @@
 #ifndef COSTMAP_UTILS_H_
 #define COSTMAP_UTILs_H_
 
+// ros stuff
 #include <ros/ros.h>
+#include "nav_msgs/OccupancyGrid.h"
+#include "nav_msgs/Odometry.h"
+
+// c++ stuff
 #include <iostream>
 #include <stdlib.h>
 #include <stdio.h>
 #include <math.h>
 
+// opencv stuff
 #include <opencv2/imgproc/imgproc.hpp>
 #include <opencv2/highgui/highgui.hpp>
 #include <opencv2/opencv.hpp>
@@ -55,7 +61,7 @@ public:
     // use satelite info to seed the exploration
 	void seed_img();
     // update cells with observation
-	void update_cells(const std::vector<int8_t> &occupancy_grid_array, std::vector<cv::Point> &u_pts, std::vector<int> &u_types);
+	void update_cells(const nav_msgs::OccupancyGrid& cost_in);
 	// used to share updates with team
 	void team_map_update( const std::vector<int> &xs, const std::vector<int> &ys, const std::vector<int> &ts);
 
@@ -84,6 +90,7 @@ public:
 	void add_agent_to_costmap_plot(const cv::Scalar &color, const std::vector<cv::Point> &myPath, const cv::Point &cLoc);
 
 	// true util functions
+	cv::Point2d global_to_local(const cv::Point2d &loc);
 	double get_global_distance(const cv::Point2d &g1, const cv::Point2d &g2);
 	double get_global_heading(const cv::Point2d &g1, const cv::Point2d &g2);
 	double to_radians(const double &deg);
