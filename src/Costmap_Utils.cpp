@@ -64,7 +64,31 @@ Costmap_Utils::Costmap_Utils(const int &test_environment_number, const int &agen
 	this->map_size_meters = this->global_to_local(this->SE_Corner);
 
 	
-	ROS_INFO("map size: %0.2f, %0.2f (meters)", this->map_size_meters.x, this->map_size_meters.y);
+	ROS_INFO("    map size: %0.2f, %0.2f (meters)", this->map_size_meters.x, this->map_size_meters.y);
+
+	// set cells per meter
+	this->meters_per_cell = 1.0;
+
+	// set meters per cell
+	this->cells_per_meter = 1.0 / this->meters_per_cell;
+
+	ROS_INFO("    cells per meter: %0.2f", this->cells_per_meter);
+	this->map_size_cells.x = ceil(this->map_size_meters.x * this->cells_per_meter);
+	this->map_size_cells.y = ceil(this->map_size_meters.y * this->cells_per_meter);
+	ROS_INFO("    cells size: %i, %i", this->map_size_cells.x, this->map_size_cells.y);
+
+	// initialize cells
+	cv::Mat b = cv::Mat::ones( this->map_size_cells.y, this->map_size_cells.x, CV_16S)*this->infFree;
+	this->cells = b.clone();
+	ROS_INFO("    map size: %i, %i (cells)", this->cells.cols, this->cells.rows);
+
+	// seed into cells satelite information
+	this->seed_img();
+
+	// announce I am initialized!
+	this->need_initialization = false;
+	ROS_INFO("Costmap_Utils::initialize_costmap::complete");
+
 
 	char agent_file[200];
 	sprintf(agent_file, "/home/nvidia/catkin_ws/src/distributed_planner/params/agent%i_params.xml", agent_index);
@@ -142,6 +166,11 @@ void Costmap_Utils::seed_img(){
 }
 
 void Costmap_Utils::update_cells( const nav_msgs::OccupancyGrid& cost_in){
+	// if I haven't been initialized then don't include
+	if( this->need_initialization){//  || this->cells_per_meter != res){
+		return;	
+	}
+
 	int width = cost_in.info.width; // number of cells wide
 	int height = cost_in.info.height; // number of cells tall
 	double res = cost_in.info.resolution; // m/cell
@@ -149,34 +178,7 @@ void Costmap_Utils::update_cells( const nav_msgs::OccupancyGrid& cost_in){
 	origin.x = cost_in.info.origin.position.x;
 	origin.y = cost_in.info.origin.position.y;
 
-	// if I haven't been initialized then don't include
-	if( this->need_initialization){//  || this->cells_per_meter != res){
-		// set cells per meter
-		this->meters_per_cell = res;
-
-		// set meters per cell
-		this->cells_per_meter = 1.0 / this->meters_per_cell;
-
-		ROS_INFO("cells per meter: %0.2f", this->cells_per_meter);
-		this->map_size_cells.x = ceil(this->map_size_meters.x * this->cells_per_meter);
-		this->map_size_cells.y = ceil(this->map_size_meters.y * this->cells_per_meter);
-		ROS_INFO("cells size: %i, %i", this->map_size_cells.x, this->map_size_cells.y);
-
-		// initialize cells
-		cv::Mat a = cv::Mat::ones( this->map_size_cells.y, this->map_size_cells.x, CV_16S)*this->infFree;
-		this->cells = a.clone();
-		ROS_INFO("map size: %i, %i (cells)", this->cells.cols, this->cells.rows);
-
-		// seed into cells satelite information
-		this->seed_img();
-
-		// announce I am initialized!
-		this->need_initialization = false;
-
-		ROS_INFO("Costmap_Utils::initialize_costmap::complete");	
-	}
-
-	
+	cv::Mat t = cv::Mat::zeros(this->cells.size(), CV_8UC1);
 	for(size_t i=0; i<cost_in.data.size(); i++){
 		// point in the array
 		cv::Point p_a( i % width, floor( i / height) );
@@ -207,12 +209,34 @@ void Costmap_Utils::update_cells( const nav_msgs::OccupancyGrid& cost_in){
 		if(cost_in.data[i] == ros_unknown){
 			continue;
 		}
-		else if(cost_in.data[i] < ros_occupied / 4){ // ros free
-		 	cells.at<short>(p_c) = obsFree;
+		else if(cost_in.data[i] < ros_occupied / 4){ // ros free		 	
+			//cells.at<short>(p_c) = obsFree;
 		}
 		else{
 			//ROS_WARN("costmap add obstacles is off");
-	 		cells.at<short>(p_c) = obsOccupied;
+	 		//cells.at<short>(p_c) = obsOccupied;
+			t.at<uchar>(p_c) = 255;
+		}
+	}
+
+	// now inflate obstacles
+	cv::Mat s = cv::Mat::zeros(t.size(), CV_8UC1);
+	cv::blur(t,s,cv::Size(5,5));
+	cv::max(t,s,t);
+
+	//cv::namedWindow("t3", CV_WINDOW_NORMAL);
+	//cv::imshow("t3", t);
+	//cv::waitKey(10);
+
+	for(int i=0; i<t.cols; i++){
+		for(int j=0; j<t.rows; j++){
+			cv::Point p(i,j);
+			if(t.at<uchar>(p) >= 100){
+				this->cells.at<short>(p) = this->obsOccupied;
+			}
+			else{
+				this->cells.at<short>(p) = this->obsFree;
+			}
 		}
 	}
 }
@@ -454,12 +478,11 @@ void Costmap_Utils::build_cells_plot(){
 }
 
 void Costmap_Utils::add_agent_to_costmap_plot(const cv::Scalar &color, const std::vector<cv::Point> &path, const cv::Point &cLoc){
-	circle(this->displayPlot, cLoc, 20, color, -1);
+	int agent_r = round(0.025*std::min(this->cells.cols, this->cells.rows));
+	int path_r = round(0.01*std::min(this->cells.cols, this->cells.rows));
+	circle(this->displayPlot, cLoc, agent_r, color, -1);
 	for(size_t i=1; i<path.size(); i++){
-		cv::Point a = path[i];
-		//cv::Point b = path[i-1];
-		//line(this->displayPlot, a, b, color, 10);
-		circle(this->displayPlot, a, 5, color, -1);
+		circle(this->displayPlot, path[i], path_r, color, -1);
 	}
 }
 

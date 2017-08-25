@@ -45,7 +45,7 @@ Costmap::Costmap(ros::NodeHandle nHandle, const int &test_environment_number, co
 	// quad status callback
 	this->quad_status_subscriber = nHandle.subscribe("/dji_bridge_status", 1, &Costmap::DJI_Bridge_status_callback, this);
 	// get goal from Dist MCTS Goal callback
-	this->dist_planner_goal_subscriber = nHandle.subscribe("/dist_mcts_goal", 1, &Costmap::dist_planner_goal_callback, this);
+	this->dist_planner_goal_subscriber = nHandle.subscribe("/wp_travel_path", 1, &Costmap::dist_planner_goal_callback, this);
 
 	/////////////////////// Publishers //////////////////////////////
 	// provide team with my observations
@@ -74,7 +74,7 @@ void Costmap::costmap_callback(const nav_msgs::OccupancyGrid& cost_in ){
 	this->costmapInitialized = true;
 	// plan path on costmap and publish it to the quad
 	//ROS_INFO("planning path");
-	this->find_path_and_publish();
+	//this->find_path_and_publish();
 
 }
 
@@ -140,10 +140,11 @@ void Costmap::DJI_Bridge_status_callback( const custom_messages::DJI_Bridge_Stat
 	this->find_path_and_publish();
 }
 
-void Costmap::dist_planner_goal_callback( const custom_messages::DJI_Bridge_Travel_Path_MSG& path_in){
+void Costmap::dist_planner_goal_callback( const custom_messages::Costmap_Bridge_Travel_Path_MSG& path_in){
+	ROS_INFO("Costmap_Bridge::Dist_Planner_Callback:: %i Wps recieved", int(path_in.local_xs.size() ) );		
 	this->wp_path.clear();
 	this->cells_path.clear();
-
+	this->set_alt = std::min(6.0, path_in.altitude);
 	for(size_t i=0; i<path_in.local_xs.size(); i++){
 		Point2d l_wp(path_in.local_xs[i], path_in.local_ys[i]);
 		Point c_wp;
@@ -160,6 +161,7 @@ void Costmap::dist_planner_goal_callback( const custom_messages::DJI_Bridge_Trav
 
 	this->local_goal = this->wp_path.back();
 	this->cell_goal = this->cells_path.back();
+	ROS_INFO("Costmap_Bridge::Dist_Planner_Callback:: %i Wps recieved", int(this->wp_path.size() ) );
 	this->find_path_and_publish();
 }
 
@@ -199,7 +201,8 @@ void Costmap::find_path_and_publish(){
 
 		bool flag = false;
 		if( this->locationInitialized ){
-			if( this->costmapInitialized ){
+			if( this->costmapInitialized || true){
+				ROS_WARN("Costmap::act::costmap check removed");
 				flag = true;
 			}
 			else{
@@ -212,6 +215,7 @@ void Costmap::find_path_and_publish(){
 
         if( flag ){
         	ROS_INFO("Costmap::act::publishing path to quad");
+			/*			
 			this->wp_path.clear();
 			ROS_WARN("Fake Goal");
 			this->wp_path.push_back(this->local_goal); // this nneds to be ERASED for trials
@@ -222,9 +226,9 @@ void Costmap::find_path_and_publish(){
 						
 			ROS_INFO("cell_goal: %i, %i", int(this->cell_goal.x), int(this->cell_goal.y));
 			ROS_INFO("cell_loc: %i, %i", int(this->cell_loc.x), int(this->cell_loc.y));
-			    	
+			*/  	
 			if(this->find_path(this->cells_path)){
-				ROS_INFO("Path length: %i", int(this->cells_path.size()));
+				ROS_INFO("published path length: %i", int(this->cells_path.size()));
         		std::vector<Point2d> local_path;
         		this->utils->cells_to_local_path(this->cells_path, local_path);
 
@@ -262,6 +266,10 @@ bool Costmap::find_path( std::vector<cv::Point> &cells_path ){
 			// a* found a path 
 			if(cp.size() > 1){
 				cells_path.insert(cells_path.end(), cp.begin()+1, cp.end());
+			}
+			if(cells_path.size() > 100){
+				cells_path.erase(cells_path.begin()+100, cells_path.end());
+				return true;
 			}
 		}
 		else{
@@ -357,6 +365,6 @@ visualization_msgs::Marker Costmap::makeRvizMarker(const Point2d &loc, const dou
     	marker.color.b = 1.0f;
     }
 
-    marker.lifetime = ros::Duration(5);
+    marker.lifetime = ros::Duration(1);
 	return marker;    
 }

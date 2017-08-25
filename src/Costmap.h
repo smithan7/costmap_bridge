@@ -26,6 +26,7 @@
 #include <custom_messages/DJI_Bridge_Status_MSG.h>
 #include <custom_messages/DJI_Bridge_Travel_Path_MSG.h>
 #include <custom_messages/DJI_Bridge_Travel_Speed_MSG.h>
+#include <custom_messages/Costmap_Bridge_Travel_Path_MSG.h>
 
 // talk to the planner
 #include <custom_messages/Costmap_Bridge_Status_MSG.h>
@@ -72,7 +73,7 @@ public:
 
 	// subscribe to the planner
 	ros::Subscriber dist_planner_goal_subscriber;
-	void dist_planner_goal_callback( const custom_messages::DJI_Bridge_Travel_Path_MSG& status_in);
+	void dist_planner_goal_callback( const custom_messages::Costmap_Bridge_Travel_Path_MSG& status_in);
 
 	// publish to dji_bridge
 	ros::Publisher path_publisher;
