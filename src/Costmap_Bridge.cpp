@@ -11,9 +11,16 @@ int main(int argc, char *argv[])
 	// initialization
 	ros::init(argc, argv, "Costmap");
 	ros::NodeHandle nHandle("~");
-	int test_environment_number = 3;
+
+	int test_environment_number = 0;
 	int agent_index = 0;
+	ros::param::get("test_environment_number", test_environment_number);
+	ros::param::get("agent_index", agent_index);
+
 	ROS_INFO("Costmap_Bridge::initializing costmap");
+	ROS_INFO("   test_environment_number %i", test_environment_number);
+	ROS_INFO("   agent_index %i", agent_index);
+	
 	Costmap *costmap = new Costmap(nHandle, test_environment_number, agent_index);
 
 	// return the control to ROS

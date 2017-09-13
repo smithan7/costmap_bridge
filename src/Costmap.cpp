@@ -106,9 +106,12 @@ void Costmap::costmap_update_callback( const custom_messages::Costmap_Bridge_Tea
 
 void Costmap::DJI_Bridge_status_callback( const custom_messages::DJI_Bridge_Status_MSG& status_in){	
 	
-	cv::Point2d l = Point2d(status_in.local_x, status_in.local_y);
+	cv::Point2d g = Point2d(status_in.longitude, status_in.latitude);
+	cv::Point2d l = this->utils->global_to_local(g);
 	cv:;Point c;
 	this->utils->local_to_cells(l, c);
+	//ROS_WARN("g: %0.6f, %0.6f", g.x, g.y);
+	//ROS_WARN("l: %0.2f, %0.2f", l.x, l.y);
 
 	if(this->utils->point_in_cells(c)){
 		this->cell_loc = c;
@@ -118,7 +121,7 @@ void Costmap::DJI_Bridge_status_callback( const custom_messages::DJI_Bridge_Stat
 	else{
 		this->locationInitialized = false;
 		ROS_ERROR("Costmap_Bridge::Costmap::DJI_Bridge_Status::off map");
-		ROS_ERROR("     cells.size( %i, %i ) and point (%i, %i)", this->utils->cells.cols, this->utils->cells.rows, c.x, c.y);		
+		ROS_ERROR("     cells.size( %i, %i ) and point (%i, %i)", this->utils->cells.rows, this->utils->cells.cols, c.x, c.y);		
 		return;	
 	}
 
@@ -215,7 +218,7 @@ void Costmap::find_path_and_publish(){
 
         if( flag ){
         	ROS_INFO("Costmap::act::publishing path to quad");
-			/*			
+					
 			this->wp_path.clear();
 			ROS_WARN("Fake Goal");
 			this->wp_path.push_back(this->local_goal); // this nneds to be ERASED for trials
@@ -226,7 +229,7 @@ void Costmap::find_path_and_publish(){
 						
 			ROS_INFO("cell_goal: %i, %i", int(this->cell_goal.x), int(this->cell_goal.y));
 			ROS_INFO("cell_loc: %i, %i", int(this->cell_loc.x), int(this->cell_loc.y));
-			*/  	
+			
 			if(this->find_path(this->cells_path)){
 				ROS_INFO("published path length: %i", int(this->cells_path.size()));
         		std::vector<Point2d> local_path;

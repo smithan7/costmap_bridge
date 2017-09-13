@@ -36,8 +36,8 @@ public:
 	cv::Mat displayPlot; // for plotting cells
 	bool pay_obstacle_costs; // am I affected by obstacles?
 
-	cv::Point2d NW_Corner, SE_Corner; // map boundaries
-
+	cv::Point2d NW_Corner, SE_Corner, NE_Corner, SW_Corner;
+	
 	// values 
 	int obsFree, infFree, obsOccupied, infOccupied;
 	int ros_occupied, ros_wall, ros_free, ros_unknown;

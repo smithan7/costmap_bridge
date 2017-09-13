@@ -20,6 +20,8 @@ Costmap_Utils::Costmap_Utils(const int &test_environment_number, const int &agen
 
 	// I need to be initialized
 	this->need_initialization = true;
+	this->map_size_meters.x = 0.0;
+	this->map_size_meters.y = 0.0;
 
 	// set heuristic for A*
 	this->a_star_heuristic = 3.0; // 1->inf get greedier
@@ -46,13 +48,14 @@ Costmap_Utils::Costmap_Utils(const int &test_environment_number, const int &agen
 	this->cInfOccupied = a;
 
 	char vert_file[200];
-	sprintf(vert_file, "/home/nvidia/catkin_ws/src/distributed_planner/params/hardware%i_vertices.xml", test_environment_number);
+	//sprintf(vert_file, "/home/nvidia/catkin_ws/src/distributed_planner/params/hardware%i_vertices.xml", test_environment_number);
+	sprintf(vert_file, "/home/andy/catkin_ws/src/distributed_planner/params/hardware%i_vertices.xml", test_environment_number);
     cv::FileStorage f_verts(vert_file, cv::FileStorage::READ);
     if (!f_verts.isOpened()){
-        ROS_ERROR("Dist planner::World::init::Failed to open %s", vert_file);
+        ROS_ERROR("Costmap_Bridge::Costmap::init::Failed to open %s", vert_file);
         return;
     }
-	ROS_INFO("Dist planner::World::init::Opened: %s", vert_file);
+	ROS_INFO("Costmap_Bridge::Costmap::init::Opened: %s", vert_file);
     
 	std::vector<double> corners;
 	f_verts["corners"] >> corners;
@@ -60,9 +63,14 @@ Costmap_Utils::Costmap_Utils(const int &test_environment_number, const int &agen
 	this->NW_Corner.y = corners[1];
 	this->SE_Corner.x = corners[2];
 	this->SE_Corner.y = corners[3];
+	this->SW_Corner.x = corners[0];
+	this->SW_Corner.y = corners[3];
+	this->NE_Corner.x = corners[2];
+	this->NE_Corner.y = corners[1];
 
-	this->map_size_meters = this->global_to_local(this->SE_Corner);
-
+	this->map_size_meters = this->global_to_local(this->NE_Corner);
+	this->map_size_meters.x = abs(this->map_size_meters.x);
+	this->map_size_meters.y = abs(this->map_size_meters.y);
 	
 	ROS_INFO("    map size: %0.2f, %0.2f (meters)", this->map_size_meters.x, this->map_size_meters.y);
 
@@ -70,7 +78,7 @@ Costmap_Utils::Costmap_Utils(const int &test_environment_number, const int &agen
 	this->meters_per_cell = 1.0;
 
 	// set meters per cell
-	this->cells_per_meter = 1.0 / this->meters_per_cell;
+	this->cells_per_meter = 1.0;;
 
 	ROS_INFO("    cells per meter: %0.2f", this->cells_per_meter);
 	this->map_size_cells.x = ceil(this->map_size_meters.x * this->cells_per_meter);
@@ -91,7 +99,8 @@ Costmap_Utils::Costmap_Utils(const int &test_environment_number, const int &agen
 
 
 	char agent_file[200];
-	sprintf(agent_file, "/home/nvidia/catkin_ws/src/distributed_planner/params/agent%i_params.xml", agent_index);
+	//sprintf(agent_file, "/home/nvidia/catkin_ws/src/distributed_planner/params/agent%i_params.xml", agent_index);
+    sprintf(agent_file, "/home/andy/catkin_ws/src/distributed_planner/params/agent%i_params.xml", agent_index);
     cv::FileStorage f_agent(agent_file, cv::FileStorage::READ);
     if (!f_agent.isOpened()){
         ROS_ERROR("Costmap_Bridge::Costmap::init::Failed to open %s", agent_file);
@@ -121,7 +130,8 @@ Costmap_Utils::Costmap_Utils(const int &test_environment_number, const int &agen
 Costmap_Utils::~Costmap_Utils() {}
 
 void Costmap_Utils::seed_img(){
-	cv::Mat seed = cv::imread("/home/nvidia/catkin_ws/src/distributed_planner/params/hardware3_obstacles.png", CV_LOAD_IMAGE_GRAYSCALE);
+	cv::Mat seed = cv::imread("/home/andy/catkin_ws/src/distributed_planner/params/hardware4_obstacles.png", CV_LOAD_IMAGE_GRAYSCALE);
+	//cv::Mat seed = cv::imread("/home/nvidia/catkin_ws/src/distributed_planner/params/hardware4_obstacles.png", CV_LOAD_IMAGE_GRAYSCALE);
 	if(!seed.data){
 		ROS_ERROR("Costmap::seed_img::Could NOT load img");
 		return;
@@ -285,8 +295,8 @@ void Costmap_Utils::cells_to_local_path(const std::vector<cv::Point> &cells_path
 
 void Costmap_Utils::cells_to_local(const cv::Point &cell, cv::Point2d &loc){
 	// convert from cell to local
-	loc.x = double(cell.x) * this->meters_per_cell;
-	loc.y = double(cell.y) * this->meters_per_cell;
+	loc.x = double(cell.x) / this->meters_per_cell;
+	loc.y = double(cell.y) / this->meters_per_cell;
 }
 
 
@@ -482,6 +492,7 @@ void Costmap_Utils::add_agent_to_costmap_plot(const cv::Scalar &color, const std
 	int path_r = round(0.01*std::min(this->cells.cols, this->cells.rows));
 	circle(this->displayPlot, cLoc, agent_r, color, -1);
 	for(size_t i=1; i<path.size(); i++){
+
 		circle(this->displayPlot, path[i], path_r, color, -1);
 	}
 }
@@ -522,12 +533,15 @@ double lin_interp(const double &p_min, const double &p_max, const double &p){
 }
 
 cv::Point2d Costmap_Utils::global_to_local(const cv::Point2d &loc){
-	double b = this->get_global_heading(this->NW_Corner, loc);
-	double d = this->get_global_distance(this->NW_Corner, loc);
+	double b = this->get_global_heading(this->SW_Corner, loc);
+	double d = this->get_global_distance(this->SW_Corner, loc);
+	//ROS_INFO("Distance/Bearing: %0.2f, %0.2f", d,b);
+	//ROS_INFO("SW_Corner: %0.6f, %0.6f", this->SW_Corner.x, this->SW_Corner.y);
 	cv::Point2d l;
-	l.x = -d*cos(b);
-	l.y = d*sin(b);
-
+	l.x = d*sin(b);
+	l.y =this->map_size_meters.y - d*cos(b);
+	//ROS_INFO("Point: %0.2f, %0.2f", d*sin(b), d*cos(b));
+	//ROS_INFO("Map size: %0.2f, %0.2f", this->map_size_meters.x, this->map_size_meters.y);
 	return l;
 }
 
@@ -569,6 +583,8 @@ double Costmap_Utils::to_radians(const double &deg){
 }
 
 bool Costmap_Utils::point_in_cells(const cv::Point &p){
+	//ROS_WARN("p: %i, %i", p.x, p.y);
+	//ROS_WARN("ms: %i, %i", this->map_size_cells.x, this->map_size_cells.y);
 	if(p.x >= 0 && p.y >= 0){
 		if(p.x < this->map_size_cells.x && p.y < this->map_size_cells.y){
 			return true;
