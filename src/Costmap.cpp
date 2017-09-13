@@ -147,7 +147,7 @@ void Costmap::dist_planner_goal_callback( const custom_messages::Costmap_Bridge_
 	ROS_INFO("Costmap_Bridge::Dist_Planner_Callback:: %i Wps recieved", int(path_in.local_xs.size() ) );		
 	this->wp_path.clear();
 	this->cells_path.clear();
-	this->set_alt = std::min(6.0, path_in.altitude);
+	this->set_alt = std::max(10.0, path_in.altitude);
 	for(size_t i=0; i<path_in.local_xs.size(); i++){
 		Point2d l_wp(path_in.local_xs[i], path_in.local_ys[i]);
 		Point c_wp;
@@ -219,19 +219,19 @@ void Costmap::find_path_and_publish(){
         if( flag ){
         	ROS_INFO("Costmap::act::publishing path to quad");
 					
-			this->wp_path.clear();
-			ROS_WARN("Fake Goal");
-			this->wp_path.push_back(this->local_goal); // this nneds to be ERASED for trials
-			this->wp_path.push_back(cv::Point(25,50));
-			this->utils->local_to_cells(this->local_goal, this->cell_goal);
-			ROS_INFO("local_goal: %.2f, %.2f", this->local_goal.x, this->local_goal.y);
-			ROS_INFO("local_loc: %.2f, %.2f", this->local_loc.x, this->local_loc.y);
+			//this->wp_path.clear();
+			//ROS_WARN("Costmap_Bridge::Costmap::Fake Goal");
+			//this->wp_path.push_back(this->local_goal); // this nneds to be ERASED for trials
+			//this->wp_path.push_back(cv::Point(125,70));
+			//this->utils->local_to_cells(this->local_goal, this->cell_goal);
+			//ROS_INFO("Costmap_Bridge::Costmap::local_goal: %.2f, %.2f", this->local_goal.x, this->local_goal.y);
+			//ROS_INFO("Costmap_Bridge::Costmap::local_loc: %.2f, %.2f", this->local_loc.x, this->local_loc.y);
 						
-			ROS_INFO("cell_goal: %i, %i", int(this->cell_goal.x), int(this->cell_goal.y));
-			ROS_INFO("cell_loc: %i, %i", int(this->cell_loc.x), int(this->cell_loc.y));
+			//ROS_INFO("Costmap_Bridge::Costmap::cell_goal: %i, %i", int(this->cell_goal.x), int(this->cell_goal.y));
+			//ROS_INFO("Costmap_Bridge::Costmap::cell_loc: %i, %i", int(this->cell_loc.x), int(this->cell_loc.y));
 			
 			if(this->find_path(this->cells_path)){
-				ROS_INFO("published path length: %i", int(this->cells_path.size()));
+				ROS_INFO("Costmap_Bridge::Costmap::published path length: %i", int(this->cells_path.size()));
         		std::vector<Point2d> local_path;
         		this->utils->cells_to_local_path(this->cells_path, local_path);
 
