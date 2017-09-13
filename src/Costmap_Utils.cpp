@@ -48,14 +48,14 @@ Costmap_Utils::Costmap_Utils(const int &test_environment_number, const int &agen
 	this->cInfOccupied = a;
 
 	char vert_file[200];
-	//sprintf(vert_file, "/home/nvidia/catkin_ws/src/distributed_planner/params/hardware%i_vertices.xml", test_environment_number);
-	sprintf(vert_file, "/home/andy/catkin_ws/src/distributed_planner/params/hardware%i_vertices.xml", test_environment_number);
+	sprintf(vert_file, "/home/nvidia/catkin_ws/src/distributed_planner/params/hardware%i_vertices.xml", test_environment_number);
+	//sprintf(vert_file, "/home/andy/catkin_ws/src/distributed_planner/params/hardware%i_vertices.xml", test_environment_number);
     cv::FileStorage f_verts(vert_file, cv::FileStorage::READ);
     if (!f_verts.isOpened()){
-        ROS_ERROR("Costmap_Bridge::Costmap::init::Failed to open %s", vert_file);
+        ROS_ERROR("Costmap_Bridge::Costmap_Utils::init::Failed to open %s", vert_file);
         return;
     }
-	ROS_INFO("Costmap_Bridge::Costmap::init::Opened: %s", vert_file);
+	ROS_INFO("Costmap_Bridge::Costmap_Utils::init::Opened: %s", vert_file);
     
 	std::vector<double> corners;
 	f_verts["corners"] >> corners;
@@ -99,14 +99,14 @@ Costmap_Utils::Costmap_Utils(const int &test_environment_number, const int &agen
 
 
 	char agent_file[200];
-	//sprintf(agent_file, "/home/nvidia/catkin_ws/src/distributed_planner/params/agent%i_params.xml", agent_index);
-    sprintf(agent_file, "/home/andy/catkin_ws/src/distributed_planner/params/agent%i_params.xml", agent_index);
+	sprintf(agent_file, "/home/nvidia/catkin_ws/src/distributed_planner/params/agent%i_params.xml", agent_index);
+    //sprintf(agent_file, "/home/andy/catkin_ws/src/distributed_planner/params/agent%i_params.xml", agent_index);
     cv::FileStorage f_agent(agent_file, cv::FileStorage::READ);
     if (!f_agent.isOpened()){
-        ROS_ERROR("Costmap_Bridge::Costmap::init::Failed to open %s", agent_file);
+        ROS_ERROR("Costmap_Bridge::Costmap_Utils::init::Failed to open %s", agent_file);
         return;
     }
-	ROS_INFO("Costmap_Bridge::Costmap::init::Opened: %s", agent_file);
+	ROS_INFO("Costmap_Bridge::Costmap_Utils::init::Opened: %s", agent_file);
     
 
 	int pay_obstacle_costs = 0;
