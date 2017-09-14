@@ -16,7 +16,7 @@ std::vector<cv::Point> get_image_points_at_intensity(const cv::Mat &image, const
 double lin_interp(const double &p_min, const double &p_max, const double &p);
 
 
-Costmap_Utils::Costmap_Utils(const int &test_environment_number, const int &agent_index){
+Costmap_Utils::Costmap_Utils(const int &test_environment_number, const int &agent_index, const int &jetson){
 
 	// I need to be initialized
 	this->need_initialization = true;
@@ -48,8 +48,12 @@ Costmap_Utils::Costmap_Utils(const int &test_environment_number, const int &agen
 	this->cInfOccupied = a;
 
 	char vert_file[200];
-	sprintf(vert_file, "/home/nvidia/catkin_ws/src/distributed_planner/params/hardware%i_vertices.xml", test_environment_number);
-	//sprintf(vert_file, "/home/andy/catkin_ws/src/distributed_planner/params/hardware%i_vertices.xml", test_environment_number);
+	if(jetson == 1){
+		sprintf(vert_file, "/home/nvidia/catkin_ws/src/distributed_planner/params/hardware%i_vertices.xml", test_environment_number);
+	}
+	else{
+		sprintf(vert_file, "/home/andy/catkin_ws/src/distributed_planner/params/hardware%i_vertices.xml", test_environment_number);
+	}
     cv::FileStorage f_verts(vert_file, cv::FileStorage::READ);
     if (!f_verts.isOpened()){
         ROS_ERROR("Costmap_Bridge::Costmap_Utils::init::Failed to open %s", vert_file);
@@ -99,8 +103,12 @@ Costmap_Utils::Costmap_Utils(const int &test_environment_number, const int &agen
 
 
 	char agent_file[200];
-	sprintf(agent_file, "/home/nvidia/catkin_ws/src/distributed_planner/params/agent%i_params.xml", agent_index);
-    //sprintf(agent_file, "/home/andy/catkin_ws/src/distributed_planner/params/agent%i_params.xml", agent_index);
+	if(jetson == 1){
+		sprintf(agent_file, "/home/nvidia/catkin_ws/src/distributed_planner/params/agent%i_params.xml", agent_index);
+	}
+	else{
+    	sprintf(agent_file, "/home/andy/catkin_ws/src/distributed_planner/params/agent%i_params.xml", agent_index);
+	}
     cv::FileStorage f_agent(agent_file, cv::FileStorage::READ);
     if (!f_agent.isOpened()){
         ROS_ERROR("Costmap_Bridge::Costmap_Utils::init::Failed to open %s", agent_file);

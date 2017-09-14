@@ -11,7 +11,7 @@
 using namespace std;
 using namespace cv;
 
-Costmap::Costmap(ros::NodeHandle nHandle, const int &test_environment_number, const int &agent_index){//, std::string param_file){
+Costmap::Costmap(ros::NodeHandle nHandle, const int &test_environment_number, const int &agent_index, const int &jetson){//, std::string param_file){
 
 	ROS_INFO("Costmap Bridge::Costmap::Costmap: initializing");		
 
@@ -60,7 +60,7 @@ Costmap::Costmap(ros::NodeHandle nHandle, const int &test_environment_number, co
 
 	// really initialize costmap
 	this->costmapInitialized = false;
-	this->utils = new Costmap_Utils(test_environment_number, agent_index);
+	this->utils = new Costmap_Utils(test_environment_number, agent_index, jetson);
 }
 
 Costmap::~Costmap(){

@@ -52,7 +52,7 @@ using namespace cv;
 class Costmap{
 public:
 
-	Costmap(ros::NodeHandle nh, const int &test_environment_number, const int &agent_index);
+	Costmap(ros::NodeHandle nh, const int &test_environment_number, const int &agent_index, const int &jetson);
 	~Costmap();
 
 	// subscribe to zed costmap
