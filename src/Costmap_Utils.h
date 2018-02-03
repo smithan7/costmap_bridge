@@ -6,7 +6,7 @@
  */
 
 #ifndef COSTMAP_UTILS_H_
-#define COSTMAP_UTILs_H_
+#define COSTMAP_UTILS_H_
 
 // ros stuff
 #include <ros/ros.h>
@@ -27,6 +27,8 @@
 
 //using namespace std;
 //using namespace cv;
+
+#include "State.h"
 
 class Costmap_Utils {
 public:
@@ -53,10 +55,15 @@ public:
 	// 201 = wall // 202 = inferred wall // 203 = inflated wall
 
 	// functions
-	Costmap_Utils(const int &test_environment_number, const int &agent_index, const int &jetson);
+	Costmap_Utils(const int &test_environment_number, const int &agent_index, const int &jetson, const int &param_seed);
 	virtual ~Costmap_Utils();
 
     // use satelite info to seed the exploration
+    void create_obs_mat();
+    cv::Mat Obs_Mat;
+	std::vector< std::vector<double> > obstacles;
+	int rand_seed;
+	void make_obs_mat();
 	void seed_img();
     // update cells with observation
 	void update_cells(const nav_msgs::OccupancyGrid& cost_in);
@@ -78,9 +85,21 @@ public:
 
 	// distances and planning
 	double get_cells_euclidian_distance(const cv::Point &a, const cv::Point &b);
+	double rand_double_in_range(const double &min, const double &max);
 	bool a_star_path(const cv::Point &sLoc, const cv::Point &gLoc, std::vector<cv::Point> &path, double &length);
 	double get_occ_penalty(const cv::Point &p); // get the occupancy at p
-	double a_star_heuristic;
+	double a_star_heuristic_weight, euclid_threshold;
+
+	double a_star_kinematic_heuristic(State &c, State &g);
+	bool a_star_kinematic(State &sState, State &gState, std::vector<State> &path, double &length_time);
+	double kinematic_get_occ_penalty( State &state);
+	bool state_to_bin( State &s, cv::Point &b);
+	std::vector<double> kinematic_weight;
+	double kinematic_goal_tolerance;
+	double speed_step, ang_step, max_speed;
+
+	void test_a_star_planner(const cv::Point &s, const cv::Point &g);
+	void test_kinematic_a_star_planner(State &s_state, State &g_state);
 
 	// display plot
 	void build_cells_plot(); // build nice display plot

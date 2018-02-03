@@ -7,11 +7,12 @@
 
 
 #include "Costmap.h"
+#include "State.h"
 
 using namespace std;
 using namespace cv;
 
-Costmap::Costmap(ros::NodeHandle nHandle, const int &test_environment_number, const int &agent_index, const int &jetson){//, std::string param_file){
+Costmap::Costmap(ros::NodeHandle nHandle, const int &test_environment_number, const int &agent_index, const int &jetson, const int &param_seed){
 
 	ROS_INFO("Costmap Bridge::Costmap::Costmap: initializing");		
 
@@ -37,35 +38,141 @@ Costmap::Costmap(ros::NodeHandle nHandle, const int &test_environment_number, co
 	this->plot_time = ros::Time::now(); // when did I last display the plot
 	this->plot_interval = ros::Duration(1.0); // plot at 1 Hz
 
+	this->agent_index = agent_index;
+
 	/////////////////////// Subscribers /////////////////////////////
 	// update the costmap
-	this->costmap_subscriber = nHandle.subscribe("/rtabmap/grid_map", 1, &Costmap::costmap_callback, this);
+	//this->costmap_subscriber = nHandle.subscribe("/rtabmap/grid_map", 1, &Costmap::costmap_callback, this);
 	// get team member map updates
-	this->costmap_update_subscriber = nHandle.subscribe("/team_map_update", 1, &Costmap::costmap_update_callback, this);
+	//this->costmap_update_subscriber = nHandle.subscribe("/team_map_update", 1, &Costmap::costmap_update_callback, this);
 	// quad status callback
-	this->quad_status_subscriber = nHandle.subscribe("/dji_bridge_status", 1, &Costmap::DJI_Bridge_status_callback, this);
+	//this->quad_status_subscriber = nHandle.subscribe("/dji_bridge_status", 1, &Costmap::DJI_Bridge_status_callback, this);
 	// get goal from Dist MCTS Goal callback
-	this->dist_planner_goal_subscriber = nHandle.subscribe("/wp_travel_path", 1, &Costmap::dist_planner_goal_callback, this);
+	//this->dist_planner_goal_subscriber = nHandle.subscribe("/wp_travel_path", 1, &Costmap::dist_planner_goal_callback, this);
 
 	/////////////////////// Publishers //////////////////////////////
 	// provide team with my observations
-	this->costmap_update_publisher = nHandle.advertise<custom_messages::Costmap_Bridge_Team_Map_Update_MSG>("/team_map_update", 1);
+	//this->costmap_update_publisher = nHandle.advertise<custom_messages::Costmap_Bridge_Team_Map_Update_MSG>("/team_map_update", 1);
 	// tell the DJI Bridge where I am going
-	this->path_publisher =  nHandle.advertise<custom_messages::DJI_Bridge_Travel_Path_MSG>("/travel_path", 1);
+	//this->path_publisher =  nHandle.advertise<custom_messages::DJI_Bridge_Travel_Path_MSG>("/travel_path", 1);
 	// tell everyone my status
-	this->status_publisher = nHandle.advertise<custom_messages::Costmap_Bridge_Status_MSG>("/costmap_bridge_status", 1);
+	//this->status_publisher = nHandle.advertise<custom_messages::Costmap_Bridge_Status_MSG>("/costmap_bridge_status", 1);
 	// publish marker to RVIZ
 	this->marker_publisher = nHandle.advertise<visualization_msgs::MarkerArray>("visualization_marker", 1);
+
+	// initialize world services
+	char temp[200];
+	int n = sprintf(temp, "/dmcts_%i/costmap_bridge/a_star_path", this->agent_index);
+	this->a_star_path_server = nHandle.advertiseService(temp, &Costmap::a_star_path_server_callback, this);
+	n = sprintf(temp, "/dmcts_%i/costmap_bridge/kinematic_path", this->agent_index);
+	this->kinematic_path_server = nHandle.advertiseService(temp, &Costmap::kinematic_path_server_callback, this);
 
 
 	// really initialize costmap
 	this->costmapInitialized = false;
-	this->utils = new Costmap_Utils(test_environment_number, agent_index, jetson);
+	this->utils = new Costmap_Utils(test_environment_number, agent_index, jetson, param_seed);
+	this->map_offset_meters = cv::Point2d(50.0, 50.0);
+	this->map_offset = cv::Point(50,50);
 }
 
 Costmap::~Costmap(){
 	delete this->utils;
 }
+
+bool Costmap::a_star_path_server_callback(custom_messages::Get_A_Star_Path::Request &req, custom_messages::Get_A_Star_Path::Response &resp){
+	/*
+	int32 start_x
+	int32 start_y
+	int32 goal_x
+	int32 goal_y
+	int32 map_num
+	---
+	bool success
+	float64[] xs
+	float64[] ys
+	float64 path_length
+	*/
+	//ROS_INFO("Costmap::a_star_path_server_callback: req.start: %i, %i", req.start_x, req.start_y);
+	//ROS_INFO("Costmap::a_star_path_server_callback: req.goal: %i, %i", req.goal_x, req.goal_y);
+	cv::Point s(req.start_x + this->map_offset.x, req.start_y + this->map_offset.y);
+	cv::Point g(req.goal_x + this->map_offset.x, req.goal_y + this->map_offset.y);
+	//ROS_INFO("Costmap::a_star_path_server_callback: s: %i, %i", s.x, s.y);
+	//ROS_INFO("Costmap::a_star_path_server_callback: g: %i, %i", g.x, g.y);
+	std::vector<cv::Point> path;
+	double length = 0.0;
+	if(this->utils->a_star_path(s,g,path,length)){
+		for(size_t i=0; i<path.size(); i++){
+			cv::Point2d l;
+			this->utils->cells_to_local(path[i], l);
+			resp.xs.push_back(l.x - this->map_offset.x);
+			resp.ys.push_back(l.y - this->map_offset.y);
+		}
+		resp.path_length = length;
+		resp.success = true;
+		
+		cv::Mat tst = this->utils->displayPlot.clone();
+		cv::circle(tst, s, 2, cv::Scalar(0,180,0), -1);
+		cv::circle(tst, g, 2, cv::Scalar(0,0,180), -1);
+
+		for(size_t i=0; i<path.size(); i++){
+			cv::circle(tst, path[i], 1, cv::Scalar(255,0,0), -1);		
+		}
+
+		cv::namedWindow("a_star_path", CV_WINDOW_NORMAL);
+		cv::imshow("a_star_path", tst);
+		cv::waitKey(100);
+		return true;	
+	}
+	else{
+		resp.path_length = INFINITY;
+		resp.success = false;
+		ROS_WARN("Costmap::a_star_path_server_callback: failed to find path");
+		return true;
+	}
+}
+
+bool Costmap::kinematic_path_server_callback(custom_messages::Get_Kinematic_A_Star_Path::Request &req, custom_messages::Get_Kinematic_A_Star_Path::Response &resp){
+	/*
+	float64 start_x
+	float64 start_y
+	float64 start_theta
+	float64 start_speed
+	float64 goal_x
+	float64 goal_y
+	float64 goal_theta
+	float64 goal_speed
+	int32 map_num
+	---
+	bool success
+	float64[] xs
+	float64[] ys
+	float64[] thetas
+	float64[] speeds
+	float64 path_length
+	*/
+
+	State s(req.start_x + this->map_offset_meters.x, req.start_y + this->map_offset_meters.y, req.start_speed, req.start_theta);
+	State g(req.goal_x + this->map_offset_meters.x, req.goal_y + this->map_offset_meters.y, req.goal_speed, req.goal_theta);
+	std::vector<State> path;
+	double length = 0.0;
+	if(this->utils->a_star_kinematic(s,g,path,length)){
+		for(size_t i=0; i<path.size(); i++){
+			resp.xs.push_back(path[i].get_x() - this->map_offset_meters.x);
+			resp.ys.push_back(path[i].get_y() - this->map_offset_meters.y);
+			resp.thetas.push_back(path[i].get_theta());
+			resp.speeds.push_back(path[i].get_speed());
+		}
+		resp.path_length = length;
+		resp.success = true;
+		return true;	
+	}
+	else{
+		resp.path_length = INFINITY;
+		resp.success = false;
+		return false;
+	}
+}
+
 
 void Costmap::costmap_callback(const nav_msgs::OccupancyGrid& cost_in ){
 	// update my costmap

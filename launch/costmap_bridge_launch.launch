@@ -1,14 +1,6 @@
 
 <launch>
-	<node pkg="tf" type="static_transform_publisher" name="map_2_world_broadcaster" args="0 0 0 0 0 0 1 world map 100" />
-
-	<node pkg="tf" type="static_transform_publisher" name="gps_2_world_broadcaster" args="0 0 0 0 0 0 1 world gps 100" />
-
-
-  <depend package="my_custom_msg_package" />
-  <group ns="costmap_bridge">
     <node pkg="costmap_bridge" name="costmap_bridge" type="costmap_bridge" output="screen"/>
-    <param name="test_environment_number" value="0"/>
-    <param name="agent_index" value="0"/>
-  </group>
+    <!--param name="test_environment_number" value="0"/-->
+    <!--param name="agent_index" value="0"/-->
 </launch>

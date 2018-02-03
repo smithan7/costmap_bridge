@@ -32,6 +32,10 @@
 #include <custom_messages/Costmap_Bridge_Status_MSG.h>
 #include <custom_messages/Costmap_Bridge_Team_Map_Update_MSG.h>
 
+// services I offer
+#include "custom_messages/Get_A_Star_Path.h"
+#include "custom_messages/Get_Kinematic_A_Star_Path.h"
+
 // normal c++ libs
 #include <iostream>
 #include <stdlib.h>
@@ -52,39 +56,36 @@ using namespace cv;
 class Costmap{
 public:
 
-	Costmap(ros::NodeHandle nh, const int &test_environment_number, const int &agent_index, const int &jetson);
+	Costmap(ros::NodeHandle nh, const int &test_environment_number, const int &agent_index, const int &jetson, const int &param_seed);
 	~Costmap();
-
+	// services
+	ros::ServiceServer a_star_path_server, kinematic_path_server;
+	bool a_star_path_server_callback(custom_messages::Get_A_Star_Path::Request &req, custom_messages::Get_A_Star_Path::Response &resp);	
+	bool kinematic_path_server_callback(custom_messages::Get_Kinematic_A_Star_Path::Request &req, custom_messages::Get_Kinematic_A_Star_Path::Response &resp);
+	
 	// subscribe to zed costmap
 	ros::Subscriber costmap_subscriber;
 	void costmap_callback(const nav_msgs::OccupancyGrid& cost_in );
-	
 	// proivde the rest of the team with my observations
 	ros::Publisher costmap_update_publisher;
 	void publish_map_updates(const std::vector<cv::Point> &u_pts, const std::vector<int> &u_types);
-
 	// take in other people's updates and include them
 	ros::Subscriber costmap_update_subscriber;
 	void costmap_update_callback( const custom_messages::Costmap_Bridge_Team_Map_Update_MSG& updates );
-
 	// subscribe to DJI_bridge
 	ros::Subscriber quad_status_subscriber;
 	void DJI_Bridge_status_callback( const custom_messages::DJI_Bridge_Status_MSG& status_in);
-
 	// subscribe to the planner
 	ros::Subscriber dist_planner_goal_subscriber;
 	void dist_planner_goal_callback( const custom_messages::Costmap_Bridge_Travel_Path_MSG& status_in);
-
 	// publish to dji_bridge
 	ros::Publisher path_publisher;
 	void publish_travel_path(const std::vector<Point2d> &path);
 	void find_path_and_publish();
 	bool find_path(std::vector<Point> &cells_path);
-
 	// publish to the planner and dji_bridge
 	ros::Publisher status_publisher;
 	void publish_Costmap_Bridge_Status();
-
 	// publish stuff to RVIZ
 	ros::Publisher marker_publisher;
 	void publish_rviz_path(const std::vector<Point2d> &path);
@@ -92,9 +93,12 @@ public:
 
 	bool travelling, waiting, emergency_stopped;
 
+	int agent_index;
+
 	// map metadata
 	double meters_per_cell;
 	Point map_offset;
+	Point2d map_offset_meters;
 	Point2d map_local_origin;
 
 	// costmap planning stuff
