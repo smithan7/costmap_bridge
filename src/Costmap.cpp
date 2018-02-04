@@ -114,13 +114,13 @@ bool Costmap::a_star_path_server_callback(custom_messages::Get_A_Star_Path::Requ
 		cv::circle(tst, s, 2, cv::Scalar(0,180,0), -1);
 		cv::circle(tst, g, 2, cv::Scalar(0,0,180), -1);
 
-		for(size_t i=0; i<path.size(); i++){
-			cv::circle(tst, path[i], 1, cv::Scalar(255,0,0), -1);		
-		}
+		//for(size_t i=0; i<path.size(); i++){
+		//	cv::circle(tst, path[i], 1, cv::Scalar(255,0,0), -1);		
+		//}
 
-		cv::namedWindow("a_star_path", CV_WINDOW_NORMAL);
-		cv::imshow("a_star_path", tst);
-		cv::waitKey(100);
+		//cv::namedWindow("a_star_path", CV_WINDOW_NORMAL);
+		//cv::imshow("a_star_path", tst);
+		//cv::waitKey(100);
 		return true;	
 	}
 	else{
