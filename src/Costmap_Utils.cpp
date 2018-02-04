@@ -537,32 +537,32 @@ double Costmap_Utils::a_star_kinematic_heuristic(State &c, State &g){
 }
 
 bool Costmap_Utils::a_star_kinematic(State &sState, State &gState, std::vector<State> &path, double &length_time){
-	//std::cout << "in a_star_kinematic" << std::endl;
+	std::cout << "in a_star_kinematic" << std::endl;
 	this->kinematic_goal_tolerance = 1.0;
 	this->speed_step = 0.125; // m/s
-	this->ang_step =  3*0.0872222; // approx 5 degs
+	this->ang_step =  3*0.0872222; // 0.087 is approx 5 degs
 	this->max_speed = 2.5;
 	this->kinematic_weight.clear();
 	this->kinematic_weight.push_back(1.0); // euclid
 	this->kinematic_weight.push_back(0.0); // bearing
-	this->kinematic_weight.push_back(0.0); // speed
+	this->kinematic_weight.push_back(0.5); // speed
 
 	State s = State(1.0,1.0,10.0,10.0);
 
 	if(this->need_initialization){
 		return false;
 	}
-	//std::cout << "did not need_initialization" << std::endl;
+	std::cout << "did not need_initialization" << std::endl;
 
 	// ensure that 
 	path.clear();
 	length_time = 0.0;
 
-	//std::cout << "checking if I start at goal" << std::endl;
+	std::cout << "checking if I start at goal" << std::endl;
 	if(this->a_star_kinematic_heuristic(sState, gState) < this->kinematic_goal_tolerance){
 		return true;
 	}
-	//std::cout << "did not start at goal" << std::endl;
+	std::cout << "did not start at goal" << std::endl;
 
 	// initialize A* stuff
 	std::vector<State> set; // all states
@@ -580,7 +580,7 @@ bool Costmap_Utils::a_star_kinematic(State &sState, State &gState, std::vector<S
 
 	std::vector<double> n_s = {0.0, this->speed_step, -this->speed_step, 0.0, 0.0}; // neighbor speed changes
 	std::vector<double> n_t = {0.0, 0.0, 0.0, this->ang_step, -this->ang_step}; // neighbor angle changes
-	//std::cout << "going into while loop" << std::endl;
+	std::cout << "going into while loop" << std::endl;
 	int loop_cntr = 0;
 	while(oSet.size() > 0){
 		loop_cntr++;
@@ -600,6 +600,7 @@ bool Costmap_Utils::a_star_kinematic(State &sState, State &gState, std::vector<S
 		}
 
 		if( mindex < 0){
+			ROS_WARN("Costmap_Bridge::Costmap_Utils::a_star_kinematic::could not find path");
 			// I did NOT find mindex! Search over!
 			path.clear();
 			length_time = INFINITY;
@@ -626,7 +627,8 @@ bool Costmap_Utils::a_star_kinematic(State &sState, State &gState, std::vector<S
 
 		
 		
-		if(loop_cntr > 5000){
+		if(loop_cntr > 50000){
+			ROS_WARN("Costmap_Bridge::Costmap_Utils::a_star_kinematic::could not find path > 500000");
 			return false;
 		}
 		

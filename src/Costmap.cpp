@@ -150,6 +150,7 @@ bool Costmap::kinematic_path_server_callback(custom_messages::Get_Kinematic_A_St
 	float64[] speeds
 	float64 path_length
 	*/
+	ROS_WARN("Costmap_Bridge::Costmap::kinematic_path_server_callback: in ");
 
 	State s(req.start_x + this->map_offset_meters.x, req.start_y + this->map_offset_meters.y, req.start_speed, req.start_theta);
 	State g(req.goal_x + this->map_offset_meters.x, req.goal_y + this->map_offset_meters.y, req.goal_speed, req.goal_theta);
@@ -162,6 +163,20 @@ bool Costmap::kinematic_path_server_callback(custom_messages::Get_Kinematic_A_St
 			resp.thetas.push_back(path[i].get_theta());
 			resp.speeds.push_back(path[i].get_speed());
 		}
+
+		cv::Mat tst = this->utils->displayPlot.clone();
+		cv::circle(tst, cv::Point(s.get_x(), s.get_y()), 2, cv::Scalar(0,180,0), -1);
+		cv::circle(tst, cv::Point(g.get_x(), g.get_y()), 2, cv::Scalar(0,0,180), -1);
+
+		for(size_t i=0; i<path.size(); i++){
+			cv::circle(tst, cv::Point(path[i].get_x(), path[i].get_y()), 1, cv::Scalar(255,0,0), -1);		
+		}
+
+		cv::namedWindow("a_star_path", CV_WINDOW_NORMAL);
+		cv::imshow("a_star_path", tst);
+		cv::waitKey(100);
+		return true;	
+
 		resp.path_length = length;
 		resp.success = true;
 		return true;	
