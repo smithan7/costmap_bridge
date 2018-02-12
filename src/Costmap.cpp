@@ -12,7 +12,7 @@
 using namespace std;
 using namespace cv;
 
-Costmap::Costmap(ros::NodeHandle nHandle, const int &test_environment_number, const int &agent_index, const int &jetson, const int &param_seed){
+Costmap::Costmap(ros::NodeHandle nHandle, const int &test_environment_number, const int &agent_index, const int &jetson, const int &param_seed, const bool &pay_obs){
 
 	ROS_INFO("Costmap Bridge::Costmap::Costmap: initializing");		
 
@@ -37,6 +37,8 @@ Costmap::Costmap(ros::NodeHandle nHandle, const int &test_environment_number, co
 	this->act_interval = ros::Duration(1.0); // how often should I replan if I don't get an update or request
 	this->plot_time = ros::Time::now(); // when did I last display the plot
 	this->plot_interval = ros::Duration(1.0); // plot at 1 Hz
+	
+	this->pay_obstacle_costs = pay_obs;
 
 	this->agent_index = agent_index;
 
@@ -70,7 +72,7 @@ Costmap::Costmap(ros::NodeHandle nHandle, const int &test_environment_number, co
 
 	// really initialize costmap
 	this->costmapInitialized = false;
-	this->utils = new Costmap_Utils(test_environment_number, agent_index, jetson, param_seed);
+	this->utils = new Costmap_Utils(test_environment_number, agent_index, jetson, param_seed, this->pay_obstacle_costs);
 	this->map_offset_meters = cv::Point2d(50.0, 50.0);
 	this->map_offset = cv::Point(50,50);
 }

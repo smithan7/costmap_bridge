@@ -55,7 +55,7 @@ public:
 	// 201 = wall // 202 = inferred wall // 203 = inflated wall
 
 	// functions
-	Costmap_Utils(const int &test_environment_number, const int &agent_index, const int &jetson, const int &param_seed);
+	Costmap_Utils(const int &test_environment_number, const int &agent_index, const int &jetson, const int &param_seed, const bool &pay_obstacle_costs);
 	virtual ~Costmap_Utils();
 
     // use satelite info to seed the exploration

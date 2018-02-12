@@ -56,7 +56,7 @@ using namespace cv;
 class Costmap{
 public:
 
-	Costmap(ros::NodeHandle nh, const int &test_environment_number, const int &agent_index, const int &jetson, const int &param_seed);
+	Costmap(ros::NodeHandle nh, const int &test_environment_number, const int &agent_index, const int &jetson, const int &param_seed, const bool &pay_obs);
 	~Costmap();
 	// services
 	ros::ServiceServer a_star_path_server, kinematic_path_server;
@@ -108,6 +108,7 @@ public:
 
 	double travelSpeed; // my travelling speed
 	double set_alt;
+	bool pay_obstacle_costs;
 	
 	ros::Time act_time, plot_time, status_time;
 	ros::Duration act_interval, plot_interval, status_interval;

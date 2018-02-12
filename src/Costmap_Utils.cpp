@@ -16,7 +16,7 @@ std::vector<cv::Point> get_image_points_at_intensity(const cv::Mat &image, const
 double lin_interp(const double &p_min, const double &p_max, const double &p);
 
 
-Costmap_Utils::Costmap_Utils(const int &test_environment_number, const int &agent_index, const int &jetson, const int &param_seed){
+Costmap_Utils::Costmap_Utils(const int &test_environment_number, const int &agent_index, const int &jetson, const int &param_seed, const bool &pay_obstacle_costs){
 
 	this->rand_seed = param_seed;
 
@@ -46,7 +46,7 @@ Costmap_Utils::Costmap_Utils(const int &test_environment_number, const int &agen
 	this->infFree_cost = 0.5;
 
 	// do I pay obstacles
-	this->pay_obstacle_costs = true;
+	this->pay_obstacle_costs = pay_obstacle_costs;
 
 	// annoying but it works to seed plot colors
 	cv::Vec3b a(255,255,255);
