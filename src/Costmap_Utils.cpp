@@ -26,7 +26,7 @@ Costmap_Utils::Costmap_Utils(const int &test_environment_number, const int &agen
 	this->map_size_meters.y = 0.0;
 
 	// set heuristic for A*
-	this->a_star_heuristic_weight = 3.0; // 1->inf get greedier
+	this->a_star_heuristic_weight = 2.75; // 1->inf get greedier
 
 	// ros's occupancy grid values
 	this->ros_unknown = -1;
@@ -163,13 +163,17 @@ Costmap_Utils::Costmap_Utils(const int &test_environment_number, const int &agen
 	}
 	*/
 
-	cv::Point s(25,25);
-	cv::Point g(35,35);
-	//this->test_a_star_planner(s,g);
+	/*
+	cv::Point s(5,5);
+	cv::Point g(95,35);
+	this->test_a_star_planner(s,g);
 
-	State s_state(5.0,5.0,0.0,0.785398);
-	State g_state(40.0,40.0,0.0,0.0);
-	//this->test_kinematic_a_star_planner(s_state, g_state);
+	// x,y,speed,theta
+	State s_state(5.0,5.0,0.0,1.57);
+	State g_state(65.0,95.0,0.0,0.0);
+	this->test_kinematic_a_star_planner(s_state, g_state);
+	//this->test_vxvy_a_star_planner(s_state, g_state);
+	*/
 }
 
 double Costmap_Utils::rand_double_in_range(const double &min, const double &max) {
@@ -248,17 +252,38 @@ void Costmap_Utils::test_a_star_planner(const cv::Point &s, const cv::Point &g){
 	double length = 0.0;
 	this->a_star_path(s,g, path, length);
 
-	/*
 	for(size_t i=0; i<path.size(); i++){
 		cv::circle(tst, path[i], 1, cv::Scalar(255,0,0), -1);		
 	}
 
 	cv::namedWindow("a_star_path", CV_WINDOW_NORMAL);
 	cv::imshow("a_star_path", tst);
-	cv::waitKey(0);
-	*/
+	cv::waitKey(100);
+	
 }
 
+void Costmap_Utils::test_vxvy_a_star_planner(State &s_state, State &g_state){
+	cv::Mat tst = this->displayPlot.clone();
+	cv::Point s,g;
+	this->local_to_cells(cv::Point2d(s_state.get_x(),s_state.get_y()), s);
+	this->local_to_cells(cv::Point2d(g_state.get_x(),g_state.get_y()), g);
+	cv::circle(tst, s, 2, cv::Scalar(0,180,0), -1);
+	cv::circle(tst, g, 2, cv::Scalar(0,0,180), -1);
+
+	std::vector<State> path; 
+	double length_time = 0.0;
+	this->a_star_vxvy(s_state,g_state, path, length_time);
+
+	for(size_t i=0; i<path.size(); i++){
+		cv::Point t;
+		this->local_to_cells(cv::Point2d(path[i].get_x(), path[i].get_y()), t);
+		cv::circle(tst, t, 1, cv::Scalar(255,0,0), -1);		
+	}
+
+	cv::namedWindow("a_star_vxvy", CV_WINDOW_NORMAL);
+	cv::imshow("a_star_vxvy", tst);
+	cv::waitKey(100);
+}
 
 void Costmap_Utils::test_kinematic_a_star_planner(State &s_state, State &g_state){
 	cv::Mat tst = this->displayPlot.clone();
@@ -271,6 +296,7 @@ void Costmap_Utils::test_kinematic_a_star_planner(State &s_state, State &g_state
 	std::vector<State> path; 
 	double length_time = 0.0;
 	this->a_star_kinematic(s_state,g_state, path, length_time);
+	//std::cout << "Out of A*" << std::endl;
 
 	for(size_t i=0; i<path.size(); i++){
 		cv::Point t;
@@ -280,7 +306,7 @@ void Costmap_Utils::test_kinematic_a_star_planner(State &s_state, State &g_state
 
 	cv::namedWindow("a_star_kinematic", CV_WINDOW_NORMAL);
 	cv::imshow("a_star_kinematic", tst);
-	cv::waitKey(0);
+	cv::waitKey(100);
 }
 
 
@@ -508,6 +534,278 @@ double Costmap_Utils::get_cells_euclidian_distance(const cv::Point &a, const cv:
 }
 
 
+double Costmap_Utils::a_star_vxvy_heuristic(State &c, State &g){
+	// c.x, c.y, c.theta, c.speed
+	double euclid_dist = sqrt(pow(c.get_x()-g.get_x(),2) + pow(c.get_y()-g.get_y(),2));
+	//std::cout << "ed: " << euclid_dist << std::endl;
+	double speed_cost = 0.0; // speed cost only matters if I am almost there
+	this->euclid_threshold = 1.0;
+	//std::cout << "euclid_threshold: " << this->euclid_threshold << std::endl;
+	if(euclid_dist < this->euclid_threshold){
+		g.calc_speed();
+		c.calc_speed();
+		speed_cost = fabs(g.get_speed() - c.get_speed());
+	}
+	this->vxvy_weight[0] = 1.0;
+	//std::cout << "vxvy_weight: " << this->vxvy_weight[0] << std::endl;
+
+	// make time be 
+	double sum_cost = this->vxvy_weight[0] * euclid_dist;// / std::max(0.000001, c.get_speed());
+	//std::cout << "sum_cost: " << sum_cost << std::endl;
+	//sum_cost += this->vxvy_weight[2] * speed_cost;
+
+	/*
+	std::cout << "c: " << c[0] << "," << c[1] << "," << c[2] << "," << c[3] << std::endl;
+	std::cout << "g: " << g[0] << "," << g[1] << "," << g[2] << "," << g[3] << std::endl;
+	std::cout << "euclid_dist: " << euclid_dist << std::endl;
+	std::cout << "theta_dist: " << theta_dist << std::endl;
+	std::cout << "speed_cost: " << speed_cost << std::endl;
+	std::cout << "kinematic_weight: " << this->vxvy[0] << "," << this->kinematic_weight[1] << "," << this->kinematic_weight[2] << std::endl;
+	std::cout << "sum_cost: " << sum_cost << std::endl;
+	*/
+
+	return sum_cost;
+}
+
+
+bool Costmap_Utils::a_star_vxvy(State &sState, State &gState, std::vector<State> &path, double &length_time){
+	std::cout << "in a_star_vxvy" << std::endl;
+	this->vxvy_goal_tolerance = 1.0;
+	this->v_step = 0.5;
+	this->max_speed = 1.0;
+	this->vxvy_weight.clear();
+	this->vxvy_weight.push_back(1.0); // euclid
+	this->vxvy_weight.push_back(0.0); // bearing
+	this->vxvy_weight.push_back(0.5); // speed
+
+	cv::Mat tst;
+	bool a_star_vxvy_im_show = true;
+	if(a_star_vxvy_im_show){
+		tst = this->displayPlot.clone();
+		cv::Point s,g;
+		this->local_to_cells(cv::Point2d(sState.get_x(),sState.get_y()), s);
+		this->local_to_cells(cv::Point2d(gState.get_x(),gState.get_y()), g);
+		cv::circle(tst, s, 2, cv::Scalar(0,180,0), -1);
+		cv::circle(tst, g, 2, cv::Scalar(0,0,180), -1);
+
+		cv::namedWindow("a_star_vxvy", CV_WINDOW_NORMAL);
+		cv::imshow("a_star_vxvy", tst);
+		cv::waitKey(100);
+	}
+
+	if(this->need_initialization){
+		return false;
+	}
+	std::cout << "did not need_initialization" << std::endl;
+
+	// ensure that 
+	path.clear();
+	length_time = 0.0;
+
+	std::cout << "checking if I start at goal" << std::endl;
+	if(this->a_star_vxvy_heuristic(sState, gState) < this->kinematic_goal_tolerance){
+		return true;
+	}
+	std::cout << "did not start at goal" << std::endl;
+
+	// initialize A* stuff
+	std::vector<State> set; // all states
+	set.push_back(sState);
+	std::vector<int> cameFrom; // one for every state in set
+	cameFrom.push_back(-1);
+	std::vector<double> gScore; // known cost from start to me
+	std::vector<double> fScore; // heuristic cost from me to goal
+
+	std::vector<int> oSet; // index of states to evaluate, index corresponds to set
+	std::vector<int> cSet; // index of states I have fully evaluated, index corresponds to set
+	
+	oSet.push_back(0); // starting node in open set
+	gScore.push_back(0.0); // starting node has score 0
+	fScore.push_back(this->a_star_heuristic_weight * this->a_star_vxvy_heuristic(sState, gState));
+
+	std::vector<double> n_vx = {this->v_step, -this->v_step, 0.0, 0.0}; // neighbor speed changes
+	std::vector<double> n_vy = {0.0, 0.0, this->v_step, -this->v_step}; // neighbor angle changes
+	std::cout << "going into while loop" << std::endl;
+	int loop_cntr = 0;
+	while(oSet.size() > 0){
+		loop_cntr++;
+		//std::cout << "start of while loop" << std::endl;
+		// find node with lowest fScore and make current
+		double min = INFINITY;
+		int mindex = -1;
+		int oSet_i = -1;
+		for(size_t i=0; i<oSet.size(); i++){
+		//	std::cout << "loop_cntr: " << loop_cntr << " i: " << i << " oSet[i]: " << oSet[i] << std::endl;
+		//	std::cout << "loop_cntr: " << loop_cntr << " i: " << i << " oSet[i]: " << oSet[i] << " and fScore: " << fScore[oSet[i]] << " and state: " << set[oSet[i]][0] << " , " << set[oSet[i]][1] << " , " << set[oSet[i]][2] << " , " << set[oSet[i]][3] << std::endl;
+			if(fScore[oSet[i]] < min){
+				min = fScore[oSet[i]];
+				mindex = oSet[i];
+				oSet_i = i;
+			}
+		}
+
+		if( mindex < 0){
+			ROS_WARN("Costmap_Bridge::Costmap_Utils::a_star_vxvy::could not find path");
+			// I did NOT find mindex! Search over!
+			path.clear();
+			length_time = INFINITY;
+			return false;
+		}
+		
+		// I did find mindex, do maintenance
+		State c_state = set[mindex]; // set current location
+		oSet.erase(oSet.begin() + oSet_i); // erase from open set
+		cSet.push_back(oSet_i);
+		
+		//std::cout << "found a mindex: " << mindex << " of set.size(): " << set.size() << std::endl;
+		/*
+		for(size_t i=0; i<set.size(); i++){
+			std::cout << "set[" << i << "]: " << set[i][0] << ", " << set[i][1] << ", " << set[i][2] << ", " << set[i][3] << " and fScore: " << fScore[i] << " and gScore: " << gScore[i] << " and cameFrom: " << cameFrom[i] << std::endl;
+		}
+		*/
+
+		//std::cout << "mindex[" << loop_cntr << "]: " << mindex << " has state: " << set[mindex].get_x() << " , " << set[mindex].get_y() << " , " << set[mindex].get_speed() << " , " << set[mindex].get_theta() << " and a_star_kinematic_heuristic: " << this->a_star_kinematic_heuristic(set[mindex], gState) << std::endl;
+		
+
+		//std::cout << "set.size(): " << set.size() << std::endl;
+		//std::cout << "fScore.size(): " << fScore.size() << std::endl;
+		//std::cout << "gScore.size(): " << gScore.size() << std::endl;
+		//std::cout << "cameFrom.size(): " << cameFrom.size() << std::endl;
+
+		
+		
+		if(loop_cntr > 500000){
+			ROS_WARN("Costmap_Bridge::Costmap_Utils::a_star_vxvy::could not find path > 500000");
+			return false;
+		}
+		
+		//for(size_t i=0; i<oSet.size(); i++){
+		//	std::cout << i << ": " << oSet[i] << std::endl;
+		//}
+
+		//std::cout << "mindex: " << mindex << std::endl;
+
+
+		
+		//for(size_t i=0; i<oSet.size(); i++){
+		//	std::cout << i << ": " << oSet[i] << std::endl;
+		//}
+
+		if(a_star_vxvy_im_show){
+			cv::Point t;
+			this->local_to_cells(cv::Point2d(set[mindex].get_x(), set[mindex].get_y()), t);
+			cv::circle(tst, t, 1, cv::Scalar(127,255,127), -1);		
+			cv::namedWindow("a_star_vxvy", CV_WINDOW_NORMAL);
+			cv::imshow("a_star_vxvy", tst);
+			cv::waitKey(10);
+			cv::circle(tst, t, 1, cv::Scalar(255,0,0), -1);
+			std::cout << "iter: " << loop_cntr << std::endl;
+		}
+
+
+		//std::cout << "checking if mindex is at my goal" << std::endl;
+		// am I at the goal?
+		if( this->a_star_vxvy_heuristic(set[mindex], gState) < this->vxvy_goal_tolerance){
+			//std::cout << " is in goal range" << std::endl;
+			// I am, construct the path 
+			//std::cout << "mindex: " << mindex << std::endl;
+			//std::cout << "  set: " << set[mindex][0] << ", " << set[mindex][1] << ", " << set[mindex][2] << ", " << set[mindex][3] << std::endl;	
+			length_time = gScore[mindex];
+			path.push_back(gState);
+			while( cameFrom[mindex] != 0 ){ // work backwards to start
+				//std::cout << "mindex: " << mindex << std::endl;
+				//std::cout << "  set: " << set[mindex][0] << ", " << set[mindex][1] << std::endl;
+				path.push_back(set[mindex]); // append path
+				mindex = cameFrom[mindex];
+			}
+			reverse(path.begin(),path.end());
+			return true;
+		}
+		//std::cout << " is not at goal" << std::endl;
+
+		// not at the goal, get new nbrs
+		for(size_t ni = 0; ni<n_vx.size(); ni++){
+			// potential nbr
+			//std::cout << "nbr change theta: " << double(n_vx[ni]) << " and speed " << double(n_vy[ni]) << std::endl; 
+			
+			State n_state;
+			n_state.set_vx(c_state.get_vx() + double(n_vx[ni]));
+			n_state.set_vy(c_state.get_vy() + double(n_vy[ni]));
+			n_state.calc_speed();
+			// don't use a quad that goes backwards!
+			if(n_state.get_speed() > this->max_speed){
+				n_state.restrict_vels(this->max_speed);
+			}
+			if(a_star_vxvy_im_show){
+				cv::Point tt;
+				this->local_to_cells(cv::Point2d(n_state.get_x(), n_state.get_y()), tt);
+				if( true ){
+					cv::circle(tst, tt, 1, cv::Scalar(127,0,0), -1);	
+				}
+			}
+			
+			n_state.set_x(c_state.get_x() + (c_state.get_vx() + n_state.get_vx())/2.0);
+			n_state.set_y(c_state.get_y() + (c_state.get_vy() + n_state.get_vy())/2.0);
+			
+			//std::cout << "ni: " << ni << " nbr: " << n_state.get_x() << " , " << n_state.get_y() << " , " << n_state.get_vx() << " , " << n_state.get_vy() << std::endl;
+			double occ_pen = this->get_occ_penalty(n_state);
+			if(occ_pen < 1.0){
+
+				bool flag = true;
+				for(size_t ci=0; ci<cSet.size(); ci++){
+					if(!this->state_compare_vxvy(set[cSet[ci]], n_state )){
+						flag = false;
+						break;
+					}
+				}
+
+				if(flag){
+					//std::cout << "appending nbr" << std::endl;			
+					set.push_back( n_state ); // add to list of all states
+					oSet.push_back( set.size() - 1 ); // I am open, point to set index
+					cameFrom.push_back( mindex ); // where did I come from
+					
+					// calc temporary gscore, estimate of total cost
+					gScore.push_back( gScore[mindex] + (1 + occ_pen) ); // always move forward 1 step 
+					fScore.push_back( gScore.back() + this->a_star_heuristic_weight * this->a_star_vxvy_heuristic(n_state, gState) );
+				}
+			}
+
+
+			//for(size_t s=0; s<set.size(); s++){
+			//	std::cout << "set[" << s << "]: " << set[s][0] << ", " << set[s][1] << ", " << set[s][2] << ", " << set[s][3] << std::endl;
+			//}
+		}
+		//std::cout << "checked nbrs" << std::endl;
+	}
+	return false;
+}
+
+bool Costmap_Utils::state_compare_vxvy(State &a, State &b){
+	double da = fabs(a.get_x() - b.get_x()) + fabs(a.get_y() - b.get_y());
+	double dv = fabs(a.get_vx() - b.get_vx()) + fabs(a.get_vy() - b.get_vy());
+
+	if(da < 0.5 && dv <= 0.25){
+		return false;
+	}
+	else{
+		return true;
+	}
+}
+
+bool Costmap_Utils::state_compare_kinematic(State &a, State &b){
+	double da = fabs(a.get_x() - b.get_x()) + fabs(a.get_y() - b.get_y());
+	double db = fabs(a.get_theta() - b.get_theta());
+	double ds = fabs(a.get_speed() - b.get_speed());
+	//std::cout << da << "," << db << "," << ds << std::endl;
+	if(da < 1.0 && db < 0.25 && ds <= 0.5){
+		return false;
+	}
+	else{
+		return true;
+	}
+}
+
 double Costmap_Utils::a_star_kinematic_heuristic(State &c, State &g){
 	// c.x, c.y, c.theta, c.speed
 	double euclid_dist = sqrt(pow(c.get_x()-g.get_x(),2) + pow(c.get_y()-g.get_y(),2));
@@ -519,9 +817,9 @@ double Costmap_Utils::a_star_kinematic_heuristic(State &c, State &g){
 		speed_cost = fabs(g.get_speed() - c.get_speed());
 	}
 
-	double sum_cost = this->kinematic_weight[0] * euclid_dist / std::max(0.001, c.get_speed());
-	sum_cost += this->kinematic_weight[1] * theta_dist;
-	sum_cost += this->kinematic_weight[2] * speed_cost;
+	double sum_cost = this->kinematic_weight[0] * euclid_dist / std::max(1.0, c.get_speed());
+	//sum_cost += this->kinematic_weight[1] * theta_dist;
+	//sum_cost += this->kinematic_weight[2] * speed_cost;
 
 	/*
 	std::cout << "c: " << c[0] << "," << c[1] << "," << c[2] << "," << c[3] << std::endl;
@@ -537,32 +835,47 @@ double Costmap_Utils::a_star_kinematic_heuristic(State &c, State &g){
 }
 
 bool Costmap_Utils::a_star_kinematic(State &sState, State &gState, std::vector<State> &path, double &length_time){
-	std::cout << "in a_star_kinematic" << std::endl;
+	//std::cout << "in a_star_kinematic" << std::endl;
 	this->kinematic_goal_tolerance = 1.0;
-	this->speed_step = 0.125; // m/s
-	this->ang_step =  3*0.0872222; // 0.087 is approx 5 degs
+	this->speed_step = 0.25; // m/s
+	this->ang_step =  4*0.0872222; // 0.087 is approx 5 degs
 	this->max_speed = 2.5;
+	double min_speed = 0.5;
 	this->kinematic_weight.clear();
 	this->kinematic_weight.push_back(1.0); // euclid
 	this->kinematic_weight.push_back(0.0); // bearing
 	this->kinematic_weight.push_back(0.5); // speed
 
-	State s = State(1.0,1.0,10.0,10.0);
+
+	cv::Mat tst;
+	bool a_star_kinematic_im_show = false;
+	if(a_star_kinematic_im_show){
+		tst = this->displayPlot.clone();
+		cv::Point s,g;
+		this->local_to_cells(cv::Point2d(sState.get_x(),sState.get_y()), s);
+		this->local_to_cells(cv::Point2d(gState.get_x(),gState.get_y()), g);
+		cv::circle(tst, s, 2, cv::Scalar(0,180,0), -1);
+		cv::circle(tst, g, 2, cv::Scalar(0,0,180), -1);
+
+		cv::namedWindow("a_star_kinematic", CV_WINDOW_NORMAL);
+		cv::imshow("a_star_kinematic", tst);
+		cv::waitKey(100);
+	}
 
 	if(this->need_initialization){
 		return false;
 	}
-	std::cout << "did not need_initialization" << std::endl;
+	//std::cout << "did not need_initialization" << std::endl;
 
 	// ensure that 
 	path.clear();
 	length_time = 0.0;
 
-	std::cout << "checking if I start at goal" << std::endl;
+	//std::cout << "checking if I start at goal" << std::endl;
 	if(this->a_star_kinematic_heuristic(sState, gState) < this->kinematic_goal_tolerance){
 		return true;
 	}
-	std::cout << "did not start at goal" << std::endl;
+	//std::cout << "did not start at goal" << std::endl;
 
 	// initialize A* stuff
 	std::vector<State> set; // all states
@@ -573,14 +886,31 @@ bool Costmap_Utils::a_star_kinematic(State &sState, State &gState, std::vector<S
 	std::vector<double> fScore; // heuristic cost from me to goal
 
 	std::vector<int> oSet; // index of states to evaluate, index corresponds to set
+	std::vector<int> cSet; // index of states I have fully evaluated, index corresponds to set
 	
 	oSet.push_back(0); // starting node in open set
 	gScore.push_back(0.0); // starting node has score 0
 	fScore.push_back(this->a_star_heuristic_weight * this->a_star_kinematic_heuristic(sState, gState));
 
-	std::vector<double> n_s = {0.0, this->speed_step, -this->speed_step, 0.0, 0.0}; // neighbor speed changes
-	std::vector<double> n_t = {0.0, 0.0, 0.0, this->ang_step, -this->ang_step}; // neighbor angle changes
-	std::cout << "going into while loop" << std::endl;
+	std::vector<double> n_s = {this->speed_step, -this->speed_step, 0.0, 0.0}; // neighbor speed changes
+	std::vector<double> n_t = {0.0, 0.0, this->ang_step, -this->ang_step}; // neighbor angle changes
+
+	for(int i=0; i<7; i++){
+		State t_state = State();
+		double t = 6.28318530718 * double(i)/8.0;
+		t_state.set_x(sState.get_x() + cos(t)*min_speed);
+		t_state.set_y(sState.get_y() + sin(t)*min_speed);
+		t_state.set_theta(t);
+		t_state.set_speed(min_speed);
+		set.push_back(t_state);
+		oSet.push_back(i+1); // starting node in open set
+		gScore.push_back(1.0); // starting node has score 0
+		fScore.push_back(1.0 + this->a_star_heuristic_weight * this->a_star_kinematic_heuristic(sState, gState));
+		cameFrom.push_back(0);
+	}
+
+
+	//std::cout << "going into while loop" << std::endl;
 	int loop_cntr = 0;
 	while(oSet.size() > 0){
 		loop_cntr++;
@@ -610,6 +940,7 @@ bool Costmap_Utils::a_star_kinematic(State &sState, State &gState, std::vector<S
 		// I did find mindex, do maintenance
 		State c_state = set[mindex]; // set current location
 		oSet.erase(oSet.begin() + oSet_i); // erase from open set
+		cSet.push_back(oSet_i);
 		/*
 		std::cout << "found a mindex: " << mindex << " of set.size(): " << set.size() << std::endl;
 		for(size_t i=0; i<set.size(); i++){
@@ -638,6 +969,16 @@ bool Costmap_Utils::a_star_kinematic(State &sState, State &gState, std::vector<S
 
 		//std::cout << "mindex: " << mindex << std::endl;
 
+		if(a_star_kinematic_im_show){
+			cv::Point t;
+			this->local_to_cells(cv::Point2d(set[mindex].get_x(), set[mindex].get_y()), t);
+			cv::circle(tst, t, 1, cv::Scalar(127,255,127), -1);		
+			cv::namedWindow("a_star_kinematic", CV_WINDOW_NORMAL);
+			cv::imshow("a_star_kinematic", tst);
+			cv::waitKey(10);
+			cv::circle(tst, t, 1, cv::Scalar(255,0,0), -1);
+			std::cout << "iter: " << loop_cntr << std::endl;
+		}
 
 		
 		//for(size_t i=0; i<oSet.size(); i++){
@@ -652,6 +993,8 @@ bool Costmap_Utils::a_star_kinematic(State &sState, State &gState, std::vector<S
 			// I am, construct the path 
 			//std::cout << "mindex: " << mindex << std::endl;
 			//std::cout << "  set: " << set[mindex][0] << ", " << set[mindex][1] << ", " << set[mindex][2] << ", " << set[mindex][3] << std::endl;	
+			//std::cout << "set.size(): " << set.size() << std::endl;
+			//std::cout << "cameFrom.size(): " << cameFrom.size() << std::endl;
 			length_time = gScore[mindex];
 			path.push_back(gState);
 			while( cameFrom[mindex] != 0 ){ // work backwards to start
@@ -661,6 +1004,7 @@ bool Costmap_Utils::a_star_kinematic(State &sState, State &gState, std::vector<S
 				mindex = cameFrom[mindex];
 			}
 			reverse(path.begin(),path.end());
+			//std::cout << "built path" << std::endl;
 			return true;
 		}
 		//std::cout << " is not at goal" << std::endl;
@@ -669,40 +1013,48 @@ bool Costmap_Utils::a_star_kinematic(State &sState, State &gState, std::vector<S
 		for(size_t ni = 0; ni<n_s.size(); ni++){
 			// potential nbr
 			//std::cout << "nbr change theta: " << n_t[ni] << " and speed " << n_s[ni] << std::endl; 
-			State n_state(0.0,0.0,c_state.get_speed() + double(n_s[ni]),c_state.get_theta() + double(n_t[ni]));
+			State n_state(0.0,0.0,c_state.get_speed() + double(n_s[ni]), c_state.get_theta() + double(n_t[ni]));
 
 			// don't use a quad that goes backwards!
-			if(n_state.get_speed() < 0 || n_state.get_speed() > this->max_speed){
+			if(n_state.get_speed() < min_speed || n_state.get_speed() > this->max_speed){
 				//std::cout << "speed less than 0, continueing" << std::endl;
 				continue;
 			}
 			
 			n_state.set_x(c_state.get_x() + (cos(c_state.get_theta())*c_state.get_speed() + cos(n_state.get_theta())*n_state.get_speed())/2.0);
 			n_state.set_y(c_state.get_y() + (sin(c_state.get_theta())*c_state.get_speed() + sin(n_state.get_theta())*n_state.get_speed())/2.0);
-			
-			//std::cout << "ni: " << ni << " nbr: " << n_state[0] << " , " << n_state[1] << " , " << n_state[2] << " , " << n_state[3] << std::endl;			
-			double occ_pen = this->kinematic_get_occ_penalty(n_state);
-			if(occ_pen < 1.0){
-				//std::cout << "appending nbr" << std::endl;			
-				set.push_back( n_state ); // add to list of all states
-				oSet.push_back( set.size() - 1 ); // I am open, point to set index
-				cameFrom.push_back( mindex ); // where did I come from
-				
-				// calc temporary gscore, estimate of total cost
-				gScore.push_back( gScore[mindex] + (1 + occ_pen) ); // always move forward 1 step 
-				fScore.push_back( gScore.back() + this->a_star_heuristic_weight * this->a_star_kinematic_heuristic(n_state, gState) );
+			//std::cout << "n_state: " << n_state.get_x() << " and " << n_state.get_y() << std::endl;
+			if(a_star_kinematic_im_show){
+				cv::Point tt;
+				this->local_to_cells(cv::Point2d(n_state.get_x(), n_state.get_y()), tt);
+				if( true ){
+					cv::circle(tst, tt, 1, cv::Scalar(127,0,0), -1);	
+				}
 			}
-
-			//for(size_t s=0; s<set.size(); s++){
-			//	std::cout << "set[" << s << "]: " << set[s][0] << ", " << set[s][1] << ", " << set[s][2] << ", " << set[s][3] << std::endl;
-			//}
+			double occ_pen = this->get_occ_penalty(n_state);
+			if(occ_pen < 1.0){
+				bool flag = true;
+				for(size_t ci=0; ci<cSet.size(); ci++){
+					if(!this->state_compare_kinematic(set[cSet[ci]], n_state )){
+						flag = false;
+						break;
+					}
+				}
+				if(flag){
+					set.push_back( n_state ); // add to list of all states
+					oSet.push_back( set.size() - 1 ); // I am open, point to set index
+					cameFrom.push_back( mindex ); // where did I come from
+					// calc temporary gscore, estimate of total cost
+					gScore.push_back( gScore[mindex] + (1 + occ_pen) ); // always move forward 1 step 
+					fScore.push_back( gScore.back() + this->a_star_heuristic_weight * this->a_star_kinematic_heuristic(n_state, gState) );
+				}
+			}
 		}
-		//std::cout << "checked nbrs" << std::endl;
 	}
 	return false;
 }
 
-double Costmap_Utils::kinematic_get_occ_penalty(State &state){
+double Costmap_Utils::get_occ_penalty(State &state){
 	// this finds the occupancy penalty of a continuous point by searching the discrete costmap bins, to find the correct bin and corresponding penalty
 	if(!this->pay_obstacle_costs){
 		return 0.0;

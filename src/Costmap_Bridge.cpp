@@ -31,6 +31,7 @@ int main(int argc, char *argv[])
 	ROS_INFO("   jetson %i", jetson);
 	ROS_INFO("   parameter_seed %i", parameter_seed);
 	ROS_INFO("   pay_obstacle_costs %i", pay_obstacle_costs);
+	pay_obstacle_costs = true;
 	
 	Costmap *costmap = new Costmap(nHandle, test_environment_number, agent_index, jetson, parameter_seed, pay_obstacle_costs);
 

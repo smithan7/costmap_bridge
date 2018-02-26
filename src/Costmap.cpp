@@ -177,7 +177,6 @@ bool Costmap::kinematic_path_server_callback(custom_messages::Get_Kinematic_A_St
 		cv::namedWindow("a_star_path", CV_WINDOW_NORMAL);
 		cv::imshow("a_star_path", tst);
 		cv::waitKey(100);
-		return true;	
 
 		resp.path_length = length;
 		resp.success = true;

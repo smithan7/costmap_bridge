@@ -86,20 +86,30 @@ public:
 	// distances and planning
 	double get_cells_euclidian_distance(const cv::Point &a, const cv::Point &b);
 	double rand_double_in_range(const double &min, const double &max);
+
+	void test_a_star_planner(const cv::Point &s, const cv::Point &g);
 	bool a_star_path(const cv::Point &sLoc, const cv::Point &gLoc, std::vector<cv::Point> &path, double &length);
 	double get_occ_penalty(const cv::Point &p); // get the occupancy at p
 	double a_star_heuristic_weight, euclid_threshold;
 
+	void test_vxvy_a_star_planner(State &s_state, State &g_state);
+	double a_star_vxvy_heuristic(State &c, State &g);
+	bool a_star_vxvy(State &sState, State &gState, std::vector<State> &path, double &length_time);
+	bool state_compare_vxvy(State &a, State &b);
+	std::vector<double> vxvy_weight;
+	double vxvy_goal_tolerance;
+	double v_step, max_vel;
+
+	void test_kinematic_a_star_planner(State &s_state, State &g_state);
 	double a_star_kinematic_heuristic(State &c, State &g);
 	bool a_star_kinematic(State &sState, State &gState, std::vector<State> &path, double &length_time);
-	double kinematic_get_occ_penalty( State &state);
-	bool state_to_bin( State &s, cv::Point &b);
+	bool state_compare_kinematic(State &a, State &b);
 	std::vector<double> kinematic_weight;
 	double kinematic_goal_tolerance;
 	double speed_step, ang_step, max_speed;
 
-	void test_a_star_planner(const cv::Point &s, const cv::Point &g);
-	void test_kinematic_a_star_planner(State &s_state, State &g_state);
+	double get_occ_penalty(State &state);
+	bool state_to_bin( State &s, cv::Point &b);
 
 	// display plot
 	void build_cells_plot(); // build nice display plot
