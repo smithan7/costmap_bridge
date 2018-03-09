@@ -1,3 +1,9 @@
 <launch>
+    <arg name="agent_index" default="0"/>
+    <arg name="pay_obstacle_costs" default="true"/>
+    
+    <param name="agent_index" type="int" value="$(arg agent_index)"/>
+    <param name="pay_obstacle_costs" type="bool" value="$(arg pay_obstacle_costs)"/>
+    
     <node pkg="costmap_bridge" name="costmap_bridge" type="costmap_bridge" output="screen"/>
 </launch>

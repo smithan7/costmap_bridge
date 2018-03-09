@@ -56,12 +56,11 @@ using namespace cv;
 class Costmap{
 public:
 
-	Costmap(ros::NodeHandle nh, const int &test_environment_number, const int &agent_index, const int &jetson, const int &param_seed, const bool &pay_obs);
+	Costmap(ros::NodeHandle nHandle);
 	~Costmap();
 	// services
-	ros::ServiceServer a_star_path_server, kinematic_path_server;
+	ros::ServiceServer a_star_path_server;
 	bool a_star_path_server_callback(custom_messages::Get_A_Star_Path::Request &req, custom_messages::Get_A_Star_Path::Response &resp);	
-	bool kinematic_path_server_callback(custom_messages::Get_Kinematic_A_Star_Path::Request &req, custom_messages::Get_Kinematic_A_Star_Path::Response &resp);
 	
 	// subscribe to zed costmap
 	ros::Subscriber costmap_subscriber;
@@ -92,11 +91,13 @@ public:
 	visualization_msgs::Marker makeRvizMarker(const Point2d &loc, const double &radius, const int &color, const int &id);
 
 	bool travelling, waiting, emergency_stopped;
+	int agent_index, param_seed;
+	std::string test_environment_img;
+	double north_lat, south_lat, east_lon, west_lon, origin_lat, origin_lon;
 
-	int agent_index;
 
 	// map metadata
-	double meters_per_cell;
+	double meters_per_cell, cells_per_meter;
 	Point map_offset;
 	Point2d map_offset_meters;
 	Point2d map_local_origin;

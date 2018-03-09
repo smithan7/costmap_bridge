@@ -11,29 +11,10 @@ int main(int argc, char *argv[])
 	// initialization
 	ros::init(argc, argv, "Costmap");
 	ros::NodeHandle nHandle("~");
-
-	int test_environment_number = 0;
-	int agent_index = 0;
-	int jetson = 0;
-	int parameter_seed = 0;
-	bool pay_obstacle_costs;
-
-	ros::param::get("test_environment_number", test_environment_number);
-	ros::param::get("agent_index", agent_index);
-	ros::param::get("jetson", jetson);
-	ros::param::get("/dmcts/parameter_seed", parameter_seed);
-	ros::param::get("pay_obstacle_costs", pay_obstacle_costs);
 	
-
 	ROS_INFO("Costmap_Bridge::initializing costmap");
-	ROS_INFO("   test_environment_number %i", test_environment_number);
-	ROS_INFO("   agent_index %i", agent_index);
-	ROS_INFO("   jetson %i", jetson);
-	ROS_INFO("   parameter_seed %i", parameter_seed);
-	ROS_INFO("   pay_obstacle_costs %i", pay_obstacle_costs);
-	pay_obstacle_costs = true;
-	
-	Costmap *costmap = new Costmap(nHandle, test_environment_number, agent_index, jetson, parameter_seed, pay_obstacle_costs);
+	Costmap *costmap = new Costmap(nHandle);
+	ROS_INFO("Costmap_Bridge::initialized costmap");
 
 	// return the control to ROS
 	ros::spin();

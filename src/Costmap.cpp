@@ -12,9 +12,35 @@
 using namespace std;
 using namespace cv;
 
-Costmap::Costmap(ros::NodeHandle nHandle, const int &test_environment_number, const int &agent_index, const int &jetson, const int &param_seed, const bool &pay_obs){
+Costmap::Costmap(ros::NodeHandle nHandle){
 
-	ROS_INFO("Costmap Bridge::Costmap::Costmap: initializing");		
+	ROS_INFO("Costmap Bridge::Costmap::Costmap: loading rosparams");
+
+	ros::param::get("/test_environment_img", this->test_environment_img);
+	ros::param::get("/agent_index",this-> agent_index);
+	ros::param::get("/parameter_seed", this->param_seed);
+	ros::param::get("/pay_obstacle_costs", this->pay_obstacle_costs);
+	ros::param::get("/north_lat", this->north_lat);
+	ros::param::get("/south_lat", this->south_lat);
+	ros::param::get("/east_lon", this->east_lon);
+	ros::param::get("/west_lon", this->west_lon);
+	ros::param::get("/meters_per_cell", this->meters_per_cell);
+
+	this->origin_lat = (this->north_lat + this->south_lat)/2.0;
+	this->origin_lon = (this->east_lon + this->west_lon)/2.0;
+
+	ROS_INFO("Costmap Bridge::Costmap::Costmap: got rosparams");
+	ROS_INFO("   test_environment_img %s", this->test_environment_img.c_str());
+	ROS_INFO("   agent_index %i", this->agent_index);
+	ROS_INFO("   parameter_seed %i", this->param_seed);
+	ROS_INFO("   pay_obstacle_costs %i", this->pay_obstacle_costs);
+	ROS_INFO("   north_lat %0.6f", this->north_lat);
+	ROS_INFO("   south_lat %0.6f", this->south_lat);
+	ROS_INFO("   west_lon %0.6f", this->west_lon);
+	ROS_INFO("   east_lon %0.6f", this->east_lon);
+	ROS_INFO("   origin_lat %0.6f", this->origin_lat);
+	ROS_INFO("   origin_lon %0.6f", this->origin_lon);
+	ROS_INFO("   meters_per_cell %0.2f", this->meters_per_cell);
 
 	// initialize cell locs
 	this->cell_loc= Point(-1,-1);
@@ -38,9 +64,9 @@ Costmap::Costmap(ros::NodeHandle nHandle, const int &test_environment_number, co
 	this->plot_time = ros::Time::now(); // when did I last display the plot
 	this->plot_interval = ros::Duration(1.0); // plot at 1 Hz
 	
-	this->pay_obstacle_costs = pay_obs;
-
-	this->agent_index = agent_index;
+	this->set_alt = 0.0;
+	this->travelSpeed = 0.0;
+	this->cells_per_meter = 1.0/ meters_per_cell;
 
 	/////////////////////// Subscribers /////////////////////////////
 	// update the costmap
@@ -66,15 +92,14 @@ Costmap::Costmap(ros::NodeHandle nHandle, const int &test_environment_number, co
 	char temp[200];
 	int n = sprintf(temp, "/dmcts_%i/costmap_bridge/a_star_path", this->agent_index);
 	this->a_star_path_server = nHandle.advertiseService(temp, &Costmap::a_star_path_server_callback, this);
-	n = sprintf(temp, "/dmcts_%i/costmap_bridge/kinematic_path", this->agent_index);
-	this->kinematic_path_server = nHandle.advertiseService(temp, &Costmap::kinematic_path_server_callback, this);
-
 
 	// really initialize costmap
 	this->costmapInitialized = false;
-	this->utils = new Costmap_Utils(test_environment_number, agent_index, jetson, param_seed, this->pay_obstacle_costs);
-	this->map_offset_meters = cv::Point2d(50.0, 50.0);
-	this->map_offset = cv::Point(50,50);
+	this->utils = new Costmap_Utils(this);
+	this->map_offset_meters.x = this->utils->map_width_meters / 2.0;
+	this->map_offset_meters.y = this->utils->map_height_meters / 2.0;
+	this->map_offset.x = this->utils->map_width_cells / 2.0;
+	this->map_offset.y = this->utils->map_height_cells / 2.0;
 }
 
 Costmap::~Costmap(){
@@ -133,62 +158,6 @@ bool Costmap::a_star_path_server_callback(custom_messages::Get_A_Star_Path::Requ
 	}
 }
 
-bool Costmap::kinematic_path_server_callback(custom_messages::Get_Kinematic_A_Star_Path::Request &req, custom_messages::Get_Kinematic_A_Star_Path::Response &resp){
-	/*
-	float64 start_x
-	float64 start_y
-	float64 start_theta
-	float64 start_speed
-	float64 goal_x
-	float64 goal_y
-	float64 goal_theta
-	float64 goal_speed
-	int32 map_num
-	---
-	bool success
-	float64[] xs
-	float64[] ys
-	float64[] thetas
-	float64[] speeds
-	float64 path_length
-	*/
-	ROS_WARN("Costmap_Bridge::Costmap::kinematic_path_server_callback: in ");
-
-	State s(req.start_x + this->map_offset_meters.x, req.start_y + this->map_offset_meters.y, req.start_speed, req.start_theta);
-	State g(req.goal_x + this->map_offset_meters.x, req.goal_y + this->map_offset_meters.y, req.goal_speed, req.goal_theta);
-	std::vector<State> path;
-	double length = 0.0;
-	if(this->utils->a_star_kinematic(s,g,path,length)){
-		for(size_t i=0; i<path.size(); i++){
-			resp.xs.push_back(path[i].get_x() - this->map_offset_meters.x);
-			resp.ys.push_back(path[i].get_y() - this->map_offset_meters.y);
-			resp.thetas.push_back(path[i].get_theta());
-			resp.speeds.push_back(path[i].get_speed());
-		}
-
-		cv::Mat tst = this->utils->displayPlot.clone();
-		cv::circle(tst, cv::Point(s.get_x(), s.get_y()), 2, cv::Scalar(0,180,0), -1);
-		cv::circle(tst, cv::Point(g.get_x(), g.get_y()), 2, cv::Scalar(0,0,180), -1);
-
-		for(size_t i=0; i<path.size(); i++){
-			cv::circle(tst, cv::Point(path[i].get_x(), path[i].get_y()), 1, cv::Scalar(255,0,0), -1);		
-		}
-
-		cv::namedWindow("a_star_path", CV_WINDOW_NORMAL);
-		cv::imshow("a_star_path", tst);
-		cv::waitKey(100);
-
-		resp.path_length = length;
-		resp.success = true;
-		return true;	
-	}
-	else{
-		resp.path_length = INFINITY;
-		resp.success = false;
-		return false;
-	}
-}
-
 
 void Costmap::costmap_callback(const nav_msgs::OccupancyGrid& cost_in ){
 	// update my costmap
@@ -229,8 +198,9 @@ void Costmap::costmap_update_callback( const custom_messages::Costmap_Bridge_Tea
 
 void Costmap::DJI_Bridge_status_callback( const custom_messages::DJI_Bridge_Status_MSG& status_in){	
 	
-	cv::Point2d g = Point2d(status_in.longitude, status_in.latitude);
-	cv::Point2d l = this->utils->global_to_local(g);
+	double x,y;
+	this->utils->global_to_local(status_in.latitude, status_in.longitude, x,y);
+	cv::Point2d l(x,y);
 	cv:;Point c;
 	this->utils->local_to_cells(l, c);
 	//ROS_WARN("g: %0.6f, %0.6f", g.x, g.y);

@@ -9,6 +9,7 @@
 
 
 #include "Costmap_Utils.h"
+#include "Costmap.h"
 
 bool pointCompare(const cv::Point &a, const cv::Point &b);
 bool pointOnMat(const cv::Point &a, const cv::Mat &b);
@@ -16,17 +17,19 @@ std::vector<cv::Point> get_image_points_at_intensity(const cv::Mat &image, const
 double lin_interp(const double &p_min, const double &p_max, const double &p);
 
 
-Costmap_Utils::Costmap_Utils(const int &test_environment_number, const int &agent_index, const int &jetson, const int &param_seed, const bool &pay_obstacle_costs){
+Costmap_Utils::Costmap_Utils(Costmap* costmap){
 
-	this->rand_seed = param_seed;
+	this->euclid_threshold = 1.0;
 
 	// I need to be initialized
 	this->need_initialization = true;
-	this->map_size_meters.x = 0.0;
-	this->map_size_meters.y = 0.0;
+	this->costmap = costmap;
+	this->rand_seed = costmap->param_seed;
+	this->test_environment_img = costmap->test_environment_img;
 
 	// set heuristic for A*
-	this->a_star_heuristic_weight = 2.75; // 1->inf get greedier
+	this->a_star_heuristic_weight = 1.0;//2.75; // 1->inf get greedier
+	this->inflation_iters = 8;
 
 	// ros's occupancy grid values
 	this->ros_unknown = -1;
@@ -46,7 +49,7 @@ Costmap_Utils::Costmap_Utils(const int &test_environment_number, const int &agen
 	this->infFree_cost = 0.5;
 
 	// do I pay obstacles
-	this->pay_obstacle_costs = pay_obstacle_costs;
+	this->pay_obstacle_costs = costmap->pay_obstacle_costs;
 
 	// annoying but it works to seed plot colors
 	cv::Vec3b a(255,255,255);
@@ -58,122 +61,58 @@ Costmap_Utils::Costmap_Utils(const int &test_environment_number, const int &agen
 	a = cv::Vec3b(50,50,50);
 	this->cInfOccupied = a;
 
-	/*
-	char vert_file[200];
-	sprintf(vert_file, "/home/andy/catkin_ws/src/dmcts_world/worlds/circles_64_64/blank_100_100.jpg");//circles_64_64.jpg");
-	
-	if(jetson == 1){
-		sprintf(vert_file, "/home/nvidia/catkin_ws/src/distributed_planner/params/hardware%i_vertices.xml", test_environment_number);
-	}
-	else{
-		sprintf(vert_file, "/home/andy/catkin_ws/src/distributed_planner/params/hardware%i_vertices.xml", test_environment_number);
-	}
+	this->north_lat = costmap->north_lat;
+	this->south_lat = costmap->south_lat;
+	this->west_lon = costmap->west_lon;
+	this->east_lon = costmap->east_lon;
+	this->origin_lat = costmap->origin_lat;
+	this->origin_lon = costmap->origin_lon;
 
-    cv::FileStorage f_verts(vert_file, cv::FileStorage::READ);
-    if (!f_verts.isOpened()){
-        ROS_ERROR("Costmap_Bridge::Costmap_Utils::init::Failed to open %s", vert_file);
-        return;
-    }
-	ROS_INFO("Costmap_Bridge::Costmap_Utils::init::Opened: %s", vert_file);
-    
-	std::vector<double> corners;
-	f_verts["corners"] >> corners;
-	this->NW_Corner.x = corners[0];
-	this->NW_Corner.y = corners[1];
-	this->SE_Corner.x = corners[2];
-	this->SE_Corner.y = corners[3];
-	this->SW_Corner.x = corners[0];
-	this->SW_Corner.y = corners[3];
-	this->NE_Corner.x = corners[2];
-	this->NE_Corner.y = corners[1];
-
-	this->map_size_meters = this->global_to_local(this->NE_Corner);
-	this->map_size_meters.x = abs(this->map_size_meters.x);
-	this->map_size_meters.y = abs(this->map_size_meters.y);
-	
-	ROS_INFO("    map size: %0.2f, %0.2f (meters)", this->map_size_meters.x, this->map_size_meters.y);
+	this->map_width_meters = this->get_global_distance(this->north_lat, this->west_lon, this->north_lat, this->east_lon);
+	this->map_height_meters = this->get_global_distance(this->north_lat, this->west_lon, this->south_lat, this->west_lon);
+	ROS_INFO("    map size: %0.2f, %0.2f (meters)", this->map_width_meters, this->map_height_meters);
 
 	// set cells per meter
-	this->meters_per_cell = 1.0;
-
-	// set meters per cell
-	this->cells_per_meter = 1.0;;
+	this->meters_per_cell = costmap->meters_per_cell;
+	ROS_INFO("    meters per cell: %0.2f", this->meters_per_cell);
+	this->cells_per_meter = 1.0 / this->meters_per_cell;
 
 	ROS_INFO("    cells per meter: %0.2f", this->cells_per_meter);
-	this->map_size_cells.x = ceil(this->map_size_meters.x * this->cells_per_meter);
-	this->map_size_cells.y = ceil(this->map_size_meters.y * this->cells_per_meter);
-	ROS_INFO("    cells size: %i, %i", this->map_size_cells.x, this->map_size_cells.y);
+	this->map_width_cells = ceil(this->map_width_meters * this->cells_per_meter);
+	this->map_height_cells = ceil(this->map_height_meters * this->cells_per_meter);
 
 	// initialize cells
-	cv::Mat b = cv::Mat::ones( this->map_size_cells.y, this->map_size_cells.x, CV_16S)*this->infFree;
+	cv::Mat b = cv::Mat::ones( this->map_height_cells, this->map_width_cells, CV_16S)*this->infFree;
 	this->cells = b.clone();
 	ROS_INFO("    map size: %i, %i (cells)", this->cells.cols, this->cells.rows);
-	*/
-
-	this->map_size_cells = cv::Point(100, 100);
-	this->map_size_meters = cv::Point2d(100.0, 100.0);
 
 	// create obs mat for trials
-	srand(this->rand_seed);
-	this->create_obs_mat();
-
-	// seed into cells satelite information
-	this->seed_img();
-
-
-	// initialize display plot
-	this->build_cells_plot();
+	if(this->test_environment_img.empty()){
+		srand(this->rand_seed);
+		this->create_obs_mat(); // create random obstacles
+	}
+	else{
+		this->seed_img(); // seed into cells satelite information
+	}
+	this->build_cells_plot(); 	// initialize display plot
 	//this->display_costmap();// show nice display plot and number it
 
 	// announce I am initialized!
 	this->need_initialization = false;
 	ROS_INFO("Costmap_Utils::initialize_costmap::complete");
 
-	/*
-	char agent_file[200];
-	if(jetson == 1){
-		sprintf(agent_file, "/home/nvidia/catkin_ws/src/distributed_planner/params/agent%i_params.xml", agent_index);
-	}
-	else{
-    	sprintf(agent_file, "/home/andy/catkin_ws/src/distributed_planner/params/agent%i_params.xml", agent_index);
-	}
-    cv::FileStorage f_agent(agent_file, cv::FileStorage::READ);
-    if (!f_agent.isOpened()){
-        ROS_ERROR("Costmap_Bridge::Costmap_Utils::init::Failed to open %s", agent_file);
-        return;
-    }
-	ROS_INFO("Costmap_Bridge::Costmap_Utils::init::Opened: %s", agent_file);
-    
 
-	int pay_obstacle_costs = 0;
-	f_agent["pay_obstacle_cost"] >> this->pay_obstacle_costs;
-	f_agent.release();
-	
-	if(pay_obstacle_costs == 1){
-		this->obsFree_cost = 0.0;
-		this->infFree_cost = 0.05;
-		this->infOcc_cost = 1.0;
-		this->obsOcc_cost = 10.0;
-	}
-	else{
-		this->obsFree_cost = 0.0;
-		this->infFree_cost = 0.0;
-		this->infOcc_cost = 0.0;
-		this->obsOcc_cost = 0.0;
-	}
-	*/
 
-	/*
-	cv::Point s(5,5);
-	cv::Point g(95,35);
-	this->test_a_star_planner(s,g);
+	//Test A Star Stuff
+	//cv::Point s(50,50);
+	//cv::Point g(500,50);
+	//this->test_a_star_planner(s,g);
 
 	// x,y,speed,theta
-	State s_state(5.0,5.0,0.0,1.57);
-	State g_state(65.0,95.0,0.0,0.0);
-	this->test_kinematic_a_star_planner(s_state, g_state);
+	//State s_state(5.0,5.0,0.0,1.57);
+	//State g_state(65.0,95.0,0.0,0.0);
+	//this->test_kinematic_a_star_planner(s_state, g_state);
 	//this->test_vxvy_a_star_planner(s_state, g_state);
-	*/
 }
 
 double Costmap_Utils::rand_double_in_range(const double &min, const double &max) {
@@ -182,6 +121,7 @@ double Costmap_Utils::rand_double_in_range(const double &min, const double &max)
 }
 
 void Costmap_Utils::create_obs_mat(){
+
 	std::vector<cv::Point2d> starting_locs;
 	starting_locs.push_back(cv::Point2d(25,25));
 	starting_locs.push_back(cv::Point2d(75,75));
@@ -192,15 +132,15 @@ void Costmap_Utils::create_obs_mat(){
 	starting_locs.push_back(cv::Point2d(50,25));
 	starting_locs.push_back(cv::Point2d(25,50));
 
-	this->Obs_Mat = cv::Mat::zeros(this->map_size_cells.x, this->map_size_cells.y, CV_8UC1);
+	this->Obs_Mat = cv::Mat::zeros(this->map_height_cells, this->map_width_cells, CV_8UC1);
 	this->obstacles.clear();
 	ROS_INFO("DMCTS::World::make_obs_mat: making obstacles");
 	while(this->obstacles.size() < 10){
 		//ROS_INFO("making obstacle");
-		// create a potnetial obstacle
-		double rr = rand_double_in_range(1,10);
-		double xx = rand_double_in_range(0,this->map_size_meters.x);
-		double yy = rand_double_in_range(0,this->map_size_meters.y);
+		// create a potential obstacle
+		double rr = rand_double_in_range(1,10.0*this->cells_per_meter );
+		double xx = rand_double_in_range(0,this->map_width_cells);
+		double yy = rand_double_in_range(0,this->map_height_cells);
 		//ROS_INFO("obs: %.1f, %.1f, r =  %.1f", xx, yy, rr);
 		// check if any starting locations are in an obstacle
 		bool flag = true;
@@ -231,15 +171,38 @@ void Costmap_Utils::create_obs_mat(){
 		}
 	}
 
-	for(int j=4; j>0; j--){
-		for(size_t i=0; i<obstacles.size(); i++){
-			cv::circle(this->Obs_Mat, cv::Point(this->obstacles[i][0], this->obstacles[i][1]), this->obstacles[i][2]+j, cv::Scalar(255 - 25*j), -1);	
-		}
+	for(size_t i=0; i<obstacles.size(); i++){
+		cv::circle(this->Obs_Mat, cv::Point(this->obstacles[i][0], this->obstacles[i][1]), this->obstacles[i][2], cv::Scalar(255), -1);
 	}
 
 	//cv::namedWindow("Costmap_Utils::Obstacles", cv::WINDOW_NORMAL);
 	//cv::imshow("Costmap_Utils::Obstacles", this->Obs_Mat);
 	//cv::waitKey(0);
+
+	cv::resize(this->Obs_Mat, this->Obs_Mat, this->cells.size());
+
+	// go through every pixel of the image and occupancy map
+	for(int i=0; i<this->Obs_Mat.cols; i++){
+		for(int j=0; j<this->Obs_Mat.rows; j++){
+			cv::Point p(i,j);
+			if(this->Obs_Mat.at<uchar>(p) == 255){
+				this->cells.at<short>(p) = 255;
+			}
+			else{
+				this->cells.at<short>(p) = int(100.0 * (double(this->Obs_Mat.at<uchar>(p))/255.0));
+			}
+		}
+	}
+
+	// inflate the obstacles I have detected
+	// now inflate obstacles
+	cv::Mat s = cv::Mat::zeros(this->cells.size(), CV_16S);
+	for(int i=0; i<this->inflation_iters; i++){
+		cv::blur(this->cells,s,cv::Size(5,5));
+		cv::max(this->cells,s,this->cells);
+	}
+
+
 }
 
 void Costmap_Utils::test_a_star_planner(const cv::Point &s, const cv::Point &g){
@@ -262,129 +225,40 @@ void Costmap_Utils::test_a_star_planner(const cv::Point &s, const cv::Point &g){
 	
 }
 
-void Costmap_Utils::test_vxvy_a_star_planner(State &s_state, State &g_state){
-	cv::Mat tst = this->displayPlot.clone();
-	cv::Point s,g;
-	this->local_to_cells(cv::Point2d(s_state.get_x(),s_state.get_y()), s);
-	this->local_to_cells(cv::Point2d(g_state.get_x(),g_state.get_y()), g);
-	cv::circle(tst, s, 2, cv::Scalar(0,180,0), -1);
-	cv::circle(tst, g, 2, cv::Scalar(0,0,180), -1);
-
-	std::vector<State> path; 
-	double length_time = 0.0;
-	this->a_star_vxvy(s_state,g_state, path, length_time);
-
-	for(size_t i=0; i<path.size(); i++){
-		cv::Point t;
-		this->local_to_cells(cv::Point2d(path[i].get_x(), path[i].get_y()), t);
-		cv::circle(tst, t, 1, cv::Scalar(255,0,0), -1);		
-	}
-
-	cv::namedWindow("a_star_vxvy", CV_WINDOW_NORMAL);
-	cv::imshow("a_star_vxvy", tst);
-	cv::waitKey(100);
-}
-
-void Costmap_Utils::test_kinematic_a_star_planner(State &s_state, State &g_state){
-	cv::Mat tst = this->displayPlot.clone();
-	cv::Point s,g;
-	this->local_to_cells(cv::Point2d(s_state.get_x(),s_state.get_y()), s);
-	this->local_to_cells(cv::Point2d(g_state.get_x(),g_state.get_y()), g);
-	cv::circle(tst, s, 2, cv::Scalar(0,180,0), -1);
-	cv::circle(tst, g, 2, cv::Scalar(0,0,180), -1);
-
-	std::vector<State> path; 
-	double length_time = 0.0;
-	this->a_star_kinematic(s_state,g_state, path, length_time);
-	//std::cout << "Out of A*" << std::endl;
-
-	for(size_t i=0; i<path.size(); i++){
-		cv::Point t;
-		this->local_to_cells(cv::Point2d(path[i].get_x(), path[i].get_y()), t);
-		cv::circle(tst, t, 1, cv::Scalar(255,0,0), -1);		
-	}
-
-	cv::namedWindow("a_star_kinematic", CV_WINDOW_NORMAL);
-	cv::imshow("a_star_kinematic", tst);
-	cv::waitKey(100);
-}
-
-
 Costmap_Utils::~Costmap_Utils() {}
 
 void Costmap_Utils::seed_img(){
-	//cv::Mat seed = cv::imread("/home/andy/catkin_ws/src/dmcts_world/worlds/circles_64_64/blank_100_100.jpg", CV_LOAD_IMAGE_GRAYSCALE);
-	//cv::Mat seed = cv::imread("/home/andy/catkin_ws/src/dmcts_world/worlds/circles_64_64/walls_100_100.jpg", CV_LOAD_IMAGE_GRAYSCALE);
-	//cv::Mat seed = cv::imread("/home/andy/catkin_ws/src/dmcts_world/worlds/circles_64_64/circles_64_64.jpg", CV_LOAD_IMAGE_GRAYSCALE);
-	
-	cv::Mat seed = this->Obs_Mat.clone();
 
-	if(!seed.data && !this->Obs_Mat.data){
-		if(!seed.data){
-			ROS_ERROR("Costmap::seed_img::Could NOT load img");
-		}
-		else{
-			ROS_ERROR("Costmap::this->Obs_Mat is empty");	
-		}
+	this->Obs_Mat = cv::imread(this->test_environment_img, CV_LOAD_IMAGE_GRAYSCALE);
+	
+	if(!this->Obs_Mat.data){
+		ROS_ERROR("Costmap::seed_img::Could NOT load img");
 		return;
 	}
 
-	//cv::namedWindow("seed", CV_WINDOW_NORMAL);
-	//cv::imshow("seed", seed);
-	//cv::waitKey(10);
-	
-	this->cells_per_meter = 1.0;
-	this->meters_per_cell = 1.0 / this->cells_per_meter;
-
-	this->map_size_cells = cv::Point(seed.cols, seed.rows);
-	this->map_size_meters = cv::Point2d(seed.cols * this->meters_per_cell, seed.rows * this->meters_per_cell);	
-
-	cv::Mat b = cv::Mat::ones( this->map_size_cells.y, this->map_size_cells.x, CV_16S)*this->infFree;
-	this->cells = b.clone();
-
-	cv::Mat seed_b;
-	for(int i=0; i<3; i++){
-		blur(seed, seed_b, cv::Size(5,5));
-		cv::min(seed, seed_b, seed);
-	}
-
-	//cv::namedWindow("seed_b", CV_WINDOW_NORMAL);
-	//cv::imshow("seed_b", seed_b);
-	//cv::waitKey(10);
-
-	//cv::namedWindow("seed2", CV_WINDOW_NORMAL);
-	//cv::imshow("seed2", seed);
-	//cv::waitKey(0);
-
-	cv::resize(seed, seed, this->cells.size());
+	cv::resize(this->Obs_Mat, this->Obs_Mat, this->cells.size());
 	
 	// go through every pixel of the image and occupancy map
-	for(int i=0; i<seed.cols; i++){
-		for(int j=0; j<seed.rows; j++){
+	for(int i=0; i<this->Obs_Mat.cols; i++){
+		for(int j=0; j<this->Obs_Mat.rows; j++){
 			cv::Point p(i,j);
-			if(seed.at<uchar>(p) == 255){
+			if(this->Obs_Mat.at<uchar>(p) == 255){
 				this->cells.at<short>(p) = 255;
 			}
 			else{
-				this->cells.at<short>(p) = int(100.0 * (double(seed.at<uchar>(p))/255.0));
-				//std::cout << this->cells.at<short>(p) << ", ";
+				this->cells.at<short>(p) = int(100.0 * (double(this->Obs_Mat.at<uchar>(p))/255.0));
 			}
-			/*
-			if(seed.at<uchar>(p) >= 200 ){
-				this->cells.at<short>(p) = this->obsOccupied;
-			}
-			else if(seed.at<uchar>(p) >= 50 ){
-				this->cells.at<short>(p) = this->infOccupied;
-			}
-			else{
-				this->cells.at<short>(p) = this->obsFree;
-			}
-			*/
 		}
-		//std::cout << std::endl;
 	}
-	
-	//ROS_INFO("seeded cells");
+
+	// inflate the obstacles I have detected
+	// now inflate obstacles
+	cv::Mat s = cv::Mat::zeros(this->cells.size(), CV_16S);
+	for(int i=0; i<this->inflation_iters; i++){
+		cv::blur(this->cells,s,cv::Size(5,5));
+		cv::max(this->cells,s,this->cells);
+	}
+
 }
 
 void Costmap_Utils::update_cells( const nav_msgs::OccupancyGrid& cost_in){
@@ -416,7 +290,7 @@ void Costmap_Utils::update_cells( const nav_msgs::OccupancyGrid& cost_in){
 		ROS_INFO("origin: %.2f, %.2f", origin.x, origin.y);
 		ROS_INFO("res (m/c): %.2f", res);
 		ROS_INFO("map size (m): %.2f, %.2f", this->map_size_meters.x, this->map_size_meters.y);
-		ROS_INFO("cells.size(): %i, %i", this->map_size_cells.x, this->map_size_cells.y);		
+		ROS_INFO("cells.size(): %i, %i", this->map_width_cells, this->map_height_cells);
 		ROS_INFO("cells cols and rows: %i, %i", this->cells.cols, this->cells.rows);
 		ROS_WARN("i: %i", int(i));
 		ROS_WARN("p_a: %i, %i", p_a.x, p_a.y);
@@ -489,8 +363,8 @@ void Costmap_Utils::team_map_update( const std::vector<int> &xs, const std::vect
  cv::Point Costmap_Utils::get_cell_index(const int &l){
  	// this is from a single vector representation of the map
 	cv::Point p;
-	p.x = floor( l / this->map_size_cells.x );
-	p.y = l % this->map_size_cells.y;
+	p.x = floor( l / this->map_width_cells );
+	p.y = l % this->map_height_cells;
 
 	return p;
 }
@@ -534,525 +408,8 @@ double Costmap_Utils::get_cells_euclidian_distance(const cv::Point &a, const cv:
 }
 
 
-double Costmap_Utils::a_star_vxvy_heuristic(State &c, State &g){
-	// c.x, c.y, c.theta, c.speed
-	double euclid_dist = sqrt(pow(c.get_x()-g.get_x(),2) + pow(c.get_y()-g.get_y(),2));
-	//std::cout << "ed: " << euclid_dist << std::endl;
-	double speed_cost = 0.0; // speed cost only matters if I am almost there
-	this->euclid_threshold = 1.0;
-	//std::cout << "euclid_threshold: " << this->euclid_threshold << std::endl;
-	if(euclid_dist < this->euclid_threshold){
-		g.calc_speed();
-		c.calc_speed();
-		speed_cost = fabs(g.get_speed() - c.get_speed());
-	}
-	this->vxvy_weight[0] = 1.0;
-	//std::cout << "vxvy_weight: " << this->vxvy_weight[0] << std::endl;
-
-	// make time be 
-	double sum_cost = this->vxvy_weight[0] * euclid_dist;// / std::max(0.000001, c.get_speed());
-	//std::cout << "sum_cost: " << sum_cost << std::endl;
-	//sum_cost += this->vxvy_weight[2] * speed_cost;
-
-	/*
-	std::cout << "c: " << c[0] << "," << c[1] << "," << c[2] << "," << c[3] << std::endl;
-	std::cout << "g: " << g[0] << "," << g[1] << "," << g[2] << "," << g[3] << std::endl;
-	std::cout << "euclid_dist: " << euclid_dist << std::endl;
-	std::cout << "theta_dist: " << theta_dist << std::endl;
-	std::cout << "speed_cost: " << speed_cost << std::endl;
-	std::cout << "kinematic_weight: " << this->vxvy[0] << "," << this->kinematic_weight[1] << "," << this->kinematic_weight[2] << std::endl;
-	std::cout << "sum_cost: " << sum_cost << std::endl;
-	*/
-
-	return sum_cost;
-}
 
 
-bool Costmap_Utils::a_star_vxvy(State &sState, State &gState, std::vector<State> &path, double &length_time){
-	std::cout << "in a_star_vxvy" << std::endl;
-	this->vxvy_goal_tolerance = 1.0;
-	this->v_step = 0.5;
-	this->max_speed = 1.0;
-	this->vxvy_weight.clear();
-	this->vxvy_weight.push_back(1.0); // euclid
-	this->vxvy_weight.push_back(0.0); // bearing
-	this->vxvy_weight.push_back(0.5); // speed
-
-	cv::Mat tst;
-	bool a_star_vxvy_im_show = true;
-	if(a_star_vxvy_im_show){
-		tst = this->displayPlot.clone();
-		cv::Point s,g;
-		this->local_to_cells(cv::Point2d(sState.get_x(),sState.get_y()), s);
-		this->local_to_cells(cv::Point2d(gState.get_x(),gState.get_y()), g);
-		cv::circle(tst, s, 2, cv::Scalar(0,180,0), -1);
-		cv::circle(tst, g, 2, cv::Scalar(0,0,180), -1);
-
-		cv::namedWindow("a_star_vxvy", CV_WINDOW_NORMAL);
-		cv::imshow("a_star_vxvy", tst);
-		cv::waitKey(100);
-	}
-
-	if(this->need_initialization){
-		return false;
-	}
-	std::cout << "did not need_initialization" << std::endl;
-
-	// ensure that 
-	path.clear();
-	length_time = 0.0;
-
-	std::cout << "checking if I start at goal" << std::endl;
-	if(this->a_star_vxvy_heuristic(sState, gState) < this->kinematic_goal_tolerance){
-		return true;
-	}
-	std::cout << "did not start at goal" << std::endl;
-
-	// initialize A* stuff
-	std::vector<State> set; // all states
-	set.push_back(sState);
-	std::vector<int> cameFrom; // one for every state in set
-	cameFrom.push_back(-1);
-	std::vector<double> gScore; // known cost from start to me
-	std::vector<double> fScore; // heuristic cost from me to goal
-
-	std::vector<int> oSet; // index of states to evaluate, index corresponds to set
-	std::vector<int> cSet; // index of states I have fully evaluated, index corresponds to set
-	
-	oSet.push_back(0); // starting node in open set
-	gScore.push_back(0.0); // starting node has score 0
-	fScore.push_back(this->a_star_heuristic_weight * this->a_star_vxvy_heuristic(sState, gState));
-
-	std::vector<double> n_vx = {this->v_step, -this->v_step, 0.0, 0.0}; // neighbor speed changes
-	std::vector<double> n_vy = {0.0, 0.0, this->v_step, -this->v_step}; // neighbor angle changes
-	std::cout << "going into while loop" << std::endl;
-	int loop_cntr = 0;
-	while(oSet.size() > 0){
-		loop_cntr++;
-		//std::cout << "start of while loop" << std::endl;
-		// find node with lowest fScore and make current
-		double min = INFINITY;
-		int mindex = -1;
-		int oSet_i = -1;
-		for(size_t i=0; i<oSet.size(); i++){
-		//	std::cout << "loop_cntr: " << loop_cntr << " i: " << i << " oSet[i]: " << oSet[i] << std::endl;
-		//	std::cout << "loop_cntr: " << loop_cntr << " i: " << i << " oSet[i]: " << oSet[i] << " and fScore: " << fScore[oSet[i]] << " and state: " << set[oSet[i]][0] << " , " << set[oSet[i]][1] << " , " << set[oSet[i]][2] << " , " << set[oSet[i]][3] << std::endl;
-			if(fScore[oSet[i]] < min){
-				min = fScore[oSet[i]];
-				mindex = oSet[i];
-				oSet_i = i;
-			}
-		}
-
-		if( mindex < 0){
-			ROS_WARN("Costmap_Bridge::Costmap_Utils::a_star_vxvy::could not find path");
-			// I did NOT find mindex! Search over!
-			path.clear();
-			length_time = INFINITY;
-			return false;
-		}
-		
-		// I did find mindex, do maintenance
-		State c_state = set[mindex]; // set current location
-		oSet.erase(oSet.begin() + oSet_i); // erase from open set
-		cSet.push_back(oSet_i);
-		
-		//std::cout << "found a mindex: " << mindex << " of set.size(): " << set.size() << std::endl;
-		/*
-		for(size_t i=0; i<set.size(); i++){
-			std::cout << "set[" << i << "]: " << set[i][0] << ", " << set[i][1] << ", " << set[i][2] << ", " << set[i][3] << " and fScore: " << fScore[i] << " and gScore: " << gScore[i] << " and cameFrom: " << cameFrom[i] << std::endl;
-		}
-		*/
-
-		//std::cout << "mindex[" << loop_cntr << "]: " << mindex << " has state: " << set[mindex].get_x() << " , " << set[mindex].get_y() << " , " << set[mindex].get_speed() << " , " << set[mindex].get_theta() << " and a_star_kinematic_heuristic: " << this->a_star_kinematic_heuristic(set[mindex], gState) << std::endl;
-		
-
-		//std::cout << "set.size(): " << set.size() << std::endl;
-		//std::cout << "fScore.size(): " << fScore.size() << std::endl;
-		//std::cout << "gScore.size(): " << gScore.size() << std::endl;
-		//std::cout << "cameFrom.size(): " << cameFrom.size() << std::endl;
-
-		
-		
-		if(loop_cntr > 500000){
-			ROS_WARN("Costmap_Bridge::Costmap_Utils::a_star_vxvy::could not find path > 500000");
-			return false;
-		}
-		
-		//for(size_t i=0; i<oSet.size(); i++){
-		//	std::cout << i << ": " << oSet[i] << std::endl;
-		//}
-
-		//std::cout << "mindex: " << mindex << std::endl;
-
-
-		
-		//for(size_t i=0; i<oSet.size(); i++){
-		//	std::cout << i << ": " << oSet[i] << std::endl;
-		//}
-
-		if(a_star_vxvy_im_show){
-			cv::Point t;
-			this->local_to_cells(cv::Point2d(set[mindex].get_x(), set[mindex].get_y()), t);
-			cv::circle(tst, t, 1, cv::Scalar(127,255,127), -1);		
-			cv::namedWindow("a_star_vxvy", CV_WINDOW_NORMAL);
-			cv::imshow("a_star_vxvy", tst);
-			cv::waitKey(10);
-			cv::circle(tst, t, 1, cv::Scalar(255,0,0), -1);
-			std::cout << "iter: " << loop_cntr << std::endl;
-		}
-
-
-		//std::cout << "checking if mindex is at my goal" << std::endl;
-		// am I at the goal?
-		if( this->a_star_vxvy_heuristic(set[mindex], gState) < this->vxvy_goal_tolerance){
-			//std::cout << " is in goal range" << std::endl;
-			// I am, construct the path 
-			//std::cout << "mindex: " << mindex << std::endl;
-			//std::cout << "  set: " << set[mindex][0] << ", " << set[mindex][1] << ", " << set[mindex][2] << ", " << set[mindex][3] << std::endl;	
-			length_time = gScore[mindex];
-			path.push_back(gState);
-			while( cameFrom[mindex] != 0 ){ // work backwards to start
-				//std::cout << "mindex: " << mindex << std::endl;
-				//std::cout << "  set: " << set[mindex][0] << ", " << set[mindex][1] << std::endl;
-				path.push_back(set[mindex]); // append path
-				mindex = cameFrom[mindex];
-			}
-			reverse(path.begin(),path.end());
-			return true;
-		}
-		//std::cout << " is not at goal" << std::endl;
-
-		// not at the goal, get new nbrs
-		for(size_t ni = 0; ni<n_vx.size(); ni++){
-			// potential nbr
-			//std::cout << "nbr change theta: " << double(n_vx[ni]) << " and speed " << double(n_vy[ni]) << std::endl; 
-			
-			State n_state;
-			n_state.set_vx(c_state.get_vx() + double(n_vx[ni]));
-			n_state.set_vy(c_state.get_vy() + double(n_vy[ni]));
-			n_state.calc_speed();
-			// don't use a quad that goes backwards!
-			if(n_state.get_speed() > this->max_speed){
-				n_state.restrict_vels(this->max_speed);
-			}
-			if(a_star_vxvy_im_show){
-				cv::Point tt;
-				this->local_to_cells(cv::Point2d(n_state.get_x(), n_state.get_y()), tt);
-				if( true ){
-					cv::circle(tst, tt, 1, cv::Scalar(127,0,0), -1);	
-				}
-			}
-			
-			n_state.set_x(c_state.get_x() + (c_state.get_vx() + n_state.get_vx())/2.0);
-			n_state.set_y(c_state.get_y() + (c_state.get_vy() + n_state.get_vy())/2.0);
-			
-			//std::cout << "ni: " << ni << " nbr: " << n_state.get_x() << " , " << n_state.get_y() << " , " << n_state.get_vx() << " , " << n_state.get_vy() << std::endl;
-			double occ_pen = this->get_occ_penalty(n_state);
-			if(occ_pen < 1.0){
-
-				bool flag = true;
-				for(size_t ci=0; ci<cSet.size(); ci++){
-					if(!this->state_compare_vxvy(set[cSet[ci]], n_state )){
-						flag = false;
-						break;
-					}
-				}
-
-				if(flag){
-					//std::cout << "appending nbr" << std::endl;			
-					set.push_back( n_state ); // add to list of all states
-					oSet.push_back( set.size() - 1 ); // I am open, point to set index
-					cameFrom.push_back( mindex ); // where did I come from
-					
-					// calc temporary gscore, estimate of total cost
-					gScore.push_back( gScore[mindex] + (1 + occ_pen) ); // always move forward 1 step 
-					fScore.push_back( gScore.back() + this->a_star_heuristic_weight * this->a_star_vxvy_heuristic(n_state, gState) );
-				}
-			}
-
-
-			//for(size_t s=0; s<set.size(); s++){
-			//	std::cout << "set[" << s << "]: " << set[s][0] << ", " << set[s][1] << ", " << set[s][2] << ", " << set[s][3] << std::endl;
-			//}
-		}
-		//std::cout << "checked nbrs" << std::endl;
-	}
-	return false;
-}
-
-bool Costmap_Utils::state_compare_vxvy(State &a, State &b){
-	double da = fabs(a.get_x() - b.get_x()) + fabs(a.get_y() - b.get_y());
-	double dv = fabs(a.get_vx() - b.get_vx()) + fabs(a.get_vy() - b.get_vy());
-
-	if(da < 0.5 && dv <= 0.25){
-		return false;
-	}
-	else{
-		return true;
-	}
-}
-
-bool Costmap_Utils::state_compare_kinematic(State &a, State &b){
-	double da = fabs(a.get_x() - b.get_x()) + fabs(a.get_y() - b.get_y());
-	double db = fabs(a.get_theta() - b.get_theta());
-	double ds = fabs(a.get_speed() - b.get_speed());
-	//std::cout << da << "," << db << "," << ds << std::endl;
-	if(da < 1.0 && db < 0.25 && ds <= 0.5){
-		return false;
-	}
-	else{
-		return true;
-	}
-}
-
-double Costmap_Utils::a_star_kinematic_heuristic(State &c, State &g){
-	// c.x, c.y, c.theta, c.speed
-	double euclid_dist = sqrt(pow(c.get_x()-g.get_x(),2) + pow(c.get_y()-g.get_y(),2));
-	double g_theta = atan2(g.get_y()-c.get_y(), g.get_x()-c.get_x());
-	double theta_dist = fabs(c.get_theta()-g_theta);
-	double speed_cost = 0.0; // speed cost only matters if I am almost there
-	if(euclid_dist < this->euclid_threshold){
-		theta_dist = fabs(g.get_theta() - c.get_theta());
-		speed_cost = fabs(g.get_speed() - c.get_speed());
-	}
-
-	double sum_cost = this->kinematic_weight[0] * euclid_dist / std::max(1.0, c.get_speed());
-	//sum_cost += this->kinematic_weight[1] * theta_dist;
-	//sum_cost += this->kinematic_weight[2] * speed_cost;
-
-	/*
-	std::cout << "c: " << c[0] << "," << c[1] << "," << c[2] << "," << c[3] << std::endl;
-	std::cout << "g: " << g[0] << "," << g[1] << "," << g[2] << "," << g[3] << std::endl;
-	std::cout << "euclid_dist: " << euclid_dist << std::endl;
-	std::cout << "theta_dist: " << theta_dist << std::endl;
-	std::cout << "speed_cost: " << speed_cost << std::endl;
-	std::cout << "kinematic_weight: " << this->kinematic_weight[0] << "," << this->kinematic_weight[1] << "," << this->kinematic_weight[2] << std::endl;
-	std::cout << "sum_cost: " << sum_cost << std::endl;
-	*/
-
-	return sum_cost;
-}
-
-bool Costmap_Utils::a_star_kinematic(State &sState, State &gState, std::vector<State> &path, double &length_time){
-	//std::cout << "in a_star_kinematic" << std::endl;
-	this->kinematic_goal_tolerance = 1.0;
-	this->speed_step = 0.25; // m/s
-	this->ang_step =  4*0.0872222; // 0.087 is approx 5 degs
-	this->max_speed = 2.5;
-	double min_speed = 0.5;
-	this->kinematic_weight.clear();
-	this->kinematic_weight.push_back(1.0); // euclid
-	this->kinematic_weight.push_back(0.0); // bearing
-	this->kinematic_weight.push_back(0.5); // speed
-
-
-	cv::Mat tst;
-	bool a_star_kinematic_im_show = false;
-	if(a_star_kinematic_im_show){
-		tst = this->displayPlot.clone();
-		cv::Point s,g;
-		this->local_to_cells(cv::Point2d(sState.get_x(),sState.get_y()), s);
-		this->local_to_cells(cv::Point2d(gState.get_x(),gState.get_y()), g);
-		cv::circle(tst, s, 2, cv::Scalar(0,180,0), -1);
-		cv::circle(tst, g, 2, cv::Scalar(0,0,180), -1);
-
-		cv::namedWindow("a_star_kinematic", CV_WINDOW_NORMAL);
-		cv::imshow("a_star_kinematic", tst);
-		cv::waitKey(100);
-	}
-
-	if(this->need_initialization){
-		return false;
-	}
-	//std::cout << "did not need_initialization" << std::endl;
-
-	// ensure that 
-	path.clear();
-	length_time = 0.0;
-
-	//std::cout << "checking if I start at goal" << std::endl;
-	if(this->a_star_kinematic_heuristic(sState, gState) < this->kinematic_goal_tolerance){
-		return true;
-	}
-	//std::cout << "did not start at goal" << std::endl;
-
-	// initialize A* stuff
-	std::vector<State> set; // all states
-	set.push_back(sState);
-	std::vector<int> cameFrom; // one for every state in set
-	cameFrom.push_back(-1);
-	std::vector<double> gScore; // known cost from start to me
-	std::vector<double> fScore; // heuristic cost from me to goal
-
-	std::vector<int> oSet; // index of states to evaluate, index corresponds to set
-	std::vector<int> cSet; // index of states I have fully evaluated, index corresponds to set
-	
-	oSet.push_back(0); // starting node in open set
-	gScore.push_back(0.0); // starting node has score 0
-	fScore.push_back(this->a_star_heuristic_weight * this->a_star_kinematic_heuristic(sState, gState));
-
-	std::vector<double> n_s = {this->speed_step, -this->speed_step, 0.0, 0.0}; // neighbor speed changes
-	std::vector<double> n_t = {0.0, 0.0, this->ang_step, -this->ang_step}; // neighbor angle changes
-
-	for(int i=0; i<7; i++){
-		State t_state = State();
-		double t = 6.28318530718 * double(i)/8.0;
-		t_state.set_x(sState.get_x() + cos(t)*min_speed);
-		t_state.set_y(sState.get_y() + sin(t)*min_speed);
-		t_state.set_theta(t);
-		t_state.set_speed(min_speed);
-		set.push_back(t_state);
-		oSet.push_back(i+1); // starting node in open set
-		gScore.push_back(1.0); // starting node has score 0
-		fScore.push_back(1.0 + this->a_star_heuristic_weight * this->a_star_kinematic_heuristic(sState, gState));
-		cameFrom.push_back(0);
-	}
-
-
-	//std::cout << "going into while loop" << std::endl;
-	int loop_cntr = 0;
-	while(oSet.size() > 0){
-		loop_cntr++;
-		//std::cout << "start of while loop" << std::endl;
-		// find node with lowest fScore and make current
-		double min = INFINITY;
-		int mindex = -1;
-		int oSet_i = -1;
-		for(size_t i=0; i<oSet.size(); i++){
-		//	std::cout << "loop_cntr: " << loop_cntr << " i: " << i << " oSet[i]: " << oSet[i] << std::endl;
-		//	std::cout << "loop_cntr: " << loop_cntr << " i: " << i << " oSet[i]: " << oSet[i] << " and fScore: " << fScore[oSet[i]] << " and state: " << set[oSet[i]][0] << " , " << set[oSet[i]][1] << " , " << set[oSet[i]][2] << " , " << set[oSet[i]][3] << std::endl;
-			if(fScore[oSet[i]] < min){
-				min = fScore[oSet[i]];
-				mindex = oSet[i];
-				oSet_i = i;
-			}
-		}
-
-		if( mindex < 0){
-			ROS_WARN("Costmap_Bridge::Costmap_Utils::a_star_kinematic::could not find path");
-			// I did NOT find mindex! Search over!
-			path.clear();
-			length_time = INFINITY;
-			return false;
-		}
-		
-		// I did find mindex, do maintenance
-		State c_state = set[mindex]; // set current location
-		oSet.erase(oSet.begin() + oSet_i); // erase from open set
-		cSet.push_back(oSet_i);
-		/*
-		std::cout << "found a mindex: " << mindex << " of set.size(): " << set.size() << std::endl;
-		for(size_t i=0; i<set.size(); i++){
-			std::cout << "set[" << i << "]: " << set[i][0] << ", " << set[i][1] << ", " << set[i][2] << ", " << set[i][3] << " and fScore: " << fScore[i] << " and gScore: " << gScore[i] << " and cameFrom: " << cameFrom[i] << std::endl;
-		}
-		*/
-
-		//std::cout << "mindex[" << loop_cntr << "]: " << mindex << " has state: " << set[mindex].get_x() << " , " << set[mindex].get_y() << " , " << set[mindex].get_speed() << " , " << set[mindex].get_theta() << " and a_star_kinematic_heuristic: " << this->a_star_kinematic_heuristic(set[mindex], gState) << std::endl;
-		
-
-		//std::cout << "set.size(): " << set.size() << std::endl;
-		//std::cout << "fScore.size(): " << fScore.size() << std::endl;
-		//std::cout << "gScore.size(): " << gScore.size() << std::endl;
-		//std::cout << "cameFrom.size(): " << cameFrom.size() << std::endl;
-
-		
-		
-		if(loop_cntr > 50000){
-			ROS_WARN("Costmap_Bridge::Costmap_Utils::a_star_kinematic::could not find path > 500000");
-			return false;
-		}
-		
-		//for(size_t i=0; i<oSet.size(); i++){
-		//	std::cout << i << ": " << oSet[i] << std::endl;
-		//}
-
-		//std::cout << "mindex: " << mindex << std::endl;
-
-		if(a_star_kinematic_im_show){
-			cv::Point t;
-			this->local_to_cells(cv::Point2d(set[mindex].get_x(), set[mindex].get_y()), t);
-			cv::circle(tst, t, 1, cv::Scalar(127,255,127), -1);		
-			cv::namedWindow("a_star_kinematic", CV_WINDOW_NORMAL);
-			cv::imshow("a_star_kinematic", tst);
-			cv::waitKey(10);
-			cv::circle(tst, t, 1, cv::Scalar(255,0,0), -1);
-			std::cout << "iter: " << loop_cntr << std::endl;
-		}
-
-		
-		//for(size_t i=0; i<oSet.size(); i++){
-		//	std::cout << i << ": " << oSet[i] << std::endl;
-		//}
-
-
-		//std::cout << "checking if mindex is at my goal" << std::endl;
-		// am I at the goal?
-		if( this->a_star_kinematic_heuristic(set[mindex], gState) < this->kinematic_goal_tolerance){
-			//std::cout << " is in goal range" << std::endl;
-			// I am, construct the path 
-			//std::cout << "mindex: " << mindex << std::endl;
-			//std::cout << "  set: " << set[mindex][0] << ", " << set[mindex][1] << ", " << set[mindex][2] << ", " << set[mindex][3] << std::endl;	
-			//std::cout << "set.size(): " << set.size() << std::endl;
-			//std::cout << "cameFrom.size(): " << cameFrom.size() << std::endl;
-			length_time = gScore[mindex];
-			path.push_back(gState);
-			while( cameFrom[mindex] != 0 ){ // work backwards to start
-				//std::cout << "mindex: " << mindex << std::endl;
-				//std::cout << "  set: " << set[mindex][0] << ", " << set[mindex][1] << std::endl;
-				path.push_back(set[mindex]); // append path
-				mindex = cameFrom[mindex];
-			}
-			reverse(path.begin(),path.end());
-			//std::cout << "built path" << std::endl;
-			return true;
-		}
-		//std::cout << " is not at goal" << std::endl;
-
-		// not at the goal, get new nbrs
-		for(size_t ni = 0; ni<n_s.size(); ni++){
-			// potential nbr
-			//std::cout << "nbr change theta: " << n_t[ni] << " and speed " << n_s[ni] << std::endl; 
-			State n_state(0.0,0.0,c_state.get_speed() + double(n_s[ni]), c_state.get_theta() + double(n_t[ni]));
-
-			// don't use a quad that goes backwards!
-			if(n_state.get_speed() < min_speed || n_state.get_speed() > this->max_speed){
-				//std::cout << "speed less than 0, continueing" << std::endl;
-				continue;
-			}
-			
-			n_state.set_x(c_state.get_x() + (cos(c_state.get_theta())*c_state.get_speed() + cos(n_state.get_theta())*n_state.get_speed())/2.0);
-			n_state.set_y(c_state.get_y() + (sin(c_state.get_theta())*c_state.get_speed() + sin(n_state.get_theta())*n_state.get_speed())/2.0);
-			//std::cout << "n_state: " << n_state.get_x() << " and " << n_state.get_y() << std::endl;
-			if(a_star_kinematic_im_show){
-				cv::Point tt;
-				this->local_to_cells(cv::Point2d(n_state.get_x(), n_state.get_y()), tt);
-				if( true ){
-					cv::circle(tst, tt, 1, cv::Scalar(127,0,0), -1);	
-				}
-			}
-			double occ_pen = this->get_occ_penalty(n_state);
-			if(occ_pen < 1.0){
-				bool flag = true;
-				for(size_t ci=0; ci<cSet.size(); ci++){
-					if(!this->state_compare_kinematic(set[cSet[ci]], n_state )){
-						flag = false;
-						break;
-					}
-				}
-				if(flag){
-					set.push_back( n_state ); // add to list of all states
-					oSet.push_back( set.size() - 1 ); // I am open, point to set index
-					cameFrom.push_back( mindex ); // where did I come from
-					// calc temporary gscore, estimate of total cost
-					gScore.push_back( gScore[mindex] + (1 + occ_pen) ); // always move forward 1 step 
-					fScore.push_back( gScore.back() + this->a_star_heuristic_weight * this->a_star_kinematic_heuristic(n_state, gState) );
-				}
-			}
-		}
-	}
-	return false;
-}
 
 double Costmap_Utils::get_occ_penalty(State &state){
 	// this finds the occupancy penalty of a continuous point by searching the discrete costmap bins, to find the correct bin and corresponding penalty
@@ -1181,13 +538,8 @@ bool Costmap_Utils::a_star_path(const cv::Point &sLoc, const cv::Point &gLoc, st
 				gScore.at<float>(nbr) = ngScore;
 				//ROS_WARN("ngScore: %0.3f", ngScore);
 
+				fScore.at<float>(nbr) = gScore.at<float>(nbr) + this->a_star_heuristic_weight * this->get_cells_euclidian_distance(gLoc,nbr);
 
-				if(cells.at<short>(nbr) < 127){
-					fScore.at<float>(nbr) = gScore.at<float>(nbr) + this->a_star_heuristic_weight * this->get_cells_euclidian_distance(gLoc,nbr);
-				}
-				else{
-					fScore.at<float>(nbr)= INFINITY;
-				}
 				//ROS_WARN("a* h: %0.3f", this->a_star_heuristic);
 				//ROS_WARN("euclid dist: %0.3f", this->get_cells_euclidian_distance(gLoc,nbr));
 				//ROS_WARN("fscore: %0.3f", gScore.at<float>(nbr) + this->a_star_heuristic * this->get_cells_euclidian_distance(gLoc,nbr));
@@ -1204,38 +556,12 @@ double Costmap_Utils::get_occ_penalty(const cv::Point &p){
 	if(!this->pay_obstacle_costs){
 		return 0.0;
 	}
-	
-	//ROS_INFO("cells: %i", this->cells.at<short>(p));
-	//ROS_INFO("cells d: %0.2f", double(this->cells.at<short>(p)));
-
 	if(this->cells.at<short>(p) == 255){
 		return INFINITY;
 	}
 	else{
-		//if(this->cells.at<short>(p) > 0){
-		//	ROS_INFO("cells: %i", this->cells.at<short>(p));
-		//	ROS_INFO("cells d: %0.2f", double(this->cells.at<short>(p)));
-		//}
 		return double(this->cells.at<short>(p));
 	}
-	/*
-	if(this->cells.at<short>(p) == this->obsFree){
-		return this->obsFree_cost;
-	}
-	else if(this->cells.at<short>(p) == this->infFree){
-		return this->infFree_cost;
-	}
-	else if(this->cells.at<short>(p) == this->infOccupied){
-		return this->infOcc_cost;
-	}
-	else if(this->cells.at<short>(p) == this->obsOccupied){
-		return this->obsOcc_cost;
-	}
-	else{
-		// something went wrong, probably shouldn't go there...
-		return double(INFINITY);
-	}
-	*/
 }
 
 void Costmap_Utils::display_costmap(){ // show nice display plot and number it
@@ -1254,28 +580,6 @@ void Costmap_Utils::build_cells_plot(){
 			int c = 255 - this->cells.at<short>(a);
 			cv::Vec3b ca(c,c,c);
 			this->displayPlot.at<cv::Vec3b>(a) = ca;
-			/*
-			if(this->cells.at<short>(a) == 0){
-				this->displayPlot.at<cv::Vec3b>(a) = this->cObsFree;
-			}
-			else if(this->cells.at<short>(a) > 0){
-				this->displayPlot.at<cv::Vec3b>(a) = this->cObsOccupied;
-			}
-			*/
-			/*
-			if(this->cells.at<short>(a) == this->obsFree){
-				this->displayPlot.at<cv::Vec3b>(a) = this->cObsFree;
-			}
-			else if(this->cells.at<short>(a) == this->infFree){
-				this->displayPlot.at<cv::Vec3b>(a) = this->cInfFree;
-			}
-			else if(this->cells.at<short>(a) == this->obsOccupied){
-				this->displayPlot.at<cv::Vec3b>(a) = this->cObsOccupied;
-			}
-			else if(this->cells.at<short>(a) == this->infOccupied){
-				this->displayPlot.at<cv::Vec3b>(a) = this->cInfOccupied;
-			}
-			*/
 		}
 	}
 }
@@ -1325,27 +629,21 @@ double lin_interp(const double &p_min, const double &p_max, const double &p){
 	return (p-p_min)/(p_max-p_min);
 }
 
-cv::Point2d Costmap_Utils::global_to_local(const cv::Point2d &loc){
-	double b = this->get_global_heading(this->SW_Corner, loc);
-	double d = this->get_global_distance(this->SW_Corner, loc);
-	//ROS_INFO("Distance/Bearing: %0.2f, %0.2f", d,b);
-	//ROS_INFO("SW_Corner: %0.6f, %0.6f", this->SW_Corner.x, this->SW_Corner.y);
-	cv::Point2d l;
-	l.x = d*sin(b);
-	l.y =this->map_size_meters.y - d*cos(b);
-	//ROS_INFO("Point: %0.2f, %0.2f", d*sin(b), d*cos(b));
-	//ROS_INFO("Map size: %0.2f, %0.2f", this->map_size_meters.x, this->map_size_meters.y);
-	return l;
+void Costmap_Utils::global_to_local(const double &lat, const double &lon, double &x, double &y){
+	double b = this->get_global_heading(this->origin_lat, this->origin_lon, lat, lon);
+	double d = this->get_global_distance(this->origin_lat, this->origin_lon, lat, lon);
+	x = d*sin(b);
+	y = d*cos(b);
 }
 
 
-double Costmap_Utils::get_global_distance(const cv::Point2d &g1, const cv::Point2d &g2){
+double Costmap_Utils::get_global_distance(const double &lata, const double &lona, const double &latb, const double &lonb){
 	double R = 6378136.6; // radius of the earth in meters
 
-	double lat1 = this->to_radians(g1.y);
-	double lon1 = this->to_radians(g1.x);
-	double lat2 = this->to_radians(g2.y);
-	double lon2 = this->to_radians(g2.x);
+	double lat1 = this->to_radians(lata);
+	double lon1 = this->to_radians(lona);
+	double lat2 = this->to_radians(latb);
+	double lon2 = this->to_radians(lonb);
 
 	double dlon = lon2 - lon1;
 	double dlat = lat2 - lat1;
@@ -1357,11 +655,11 @@ double Costmap_Utils::get_global_distance(const cv::Point2d &g1, const cv::Point
 	return distance;
 }
 
-double Costmap_Utils::get_global_heading(const cv::Point2d &g1, const cv::Point2d &g2){
-	double lat1 = this->to_radians(g1.y);
-	double lat2 = this->to_radians(g2.y);
+double Costmap_Utils::get_global_heading(const double &lata, const double &lona, const double &latb, const double &lonb){
+	double lat1 = this->to_radians(lata);
+	double lat2 = this->to_radians(latb);
 
-	double dLong = this->to_radians(g2.x - g1.x);
+	double dLong = this->to_radians(lonb - lona);
 
 	double x = sin(dLong) * cos(lat2);
 	double y = cos(lat1) * sin(lat2) - (sin(lat1)*cos(lat2)*cos(dLong));
@@ -1372,14 +670,18 @@ double Costmap_Utils::get_global_heading(const cv::Point2d &g1, const cv::Point2
 }
 
 double Costmap_Utils::to_radians(const double &deg){
-	return deg*3.141592653589 / 180.0;
+	return deg*0.017453292519943;
+}
+
+double Costmap_Utils::to_degrees(const double&rad){
+	return rad*57.295779513082;
 }
 
 bool Costmap_Utils::point_in_cells(const cv::Point &p){
 	//ROS_WARN("p: %i, %i", p.x, p.y);
-	//ROS_WARN("ms: %i, %i", this->map_size_cells.x, this->map_size_cells.y);
+	//ROS_WARN("ms: %i, %i", this->map_width_cells, this->map_height_cells);
 	if(p.x >= 0 && p.y >= 0){
-		if(p.x < this->map_size_cells.x && p.y < this->map_size_cells.y){
+		if(p.x < this->map_width_cells && p.y < this->map_height_cells){
 			return true;
 		}
 	}
