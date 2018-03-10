@@ -17,6 +17,7 @@ Costmap::Costmap(ros::NodeHandle nHandle){
 	ROS_INFO("Costmap Bridge::Costmap::Costmap: loading rosparams");
 
 	ros::param::get("/test_environment_img", this->test_environment_img);
+	ros::param::get("/test_obstacle_img", this->test_obstacle_img);
 	ros::param::get("/agent_index",this-> agent_index);
 	ros::param::get("/parameter_seed", this->param_seed);
 	ros::param::get("/pay_obstacle_costs", this->pay_obstacle_costs);
@@ -31,6 +32,7 @@ Costmap::Costmap(ros::NodeHandle nHandle){
 
 	ROS_INFO("Costmap Bridge::Costmap::Costmap: got rosparams");
 	ROS_INFO("   test_environment_img %s", this->test_environment_img.c_str());
+	ROS_INFO("   test_obstacle_img %s", this->test_obstacle_img.c_str());
 	ROS_INFO("   agent_index %i", this->agent_index);
 	ROS_INFO("   parameter_seed %i", this->param_seed);
 	ROS_INFO("   pay_obstacle_costs %i", this->pay_obstacle_costs);
@@ -119,36 +121,48 @@ bool Costmap::a_star_path_server_callback(custom_messages::Get_A_Star_Path::Requ
 	float64[] ys
 	float64 path_length
 	*/
-	//ROS_INFO("Costmap::a_star_path_server_callback: req.start: %i, %i", req.start_x, req.start_y);
-	//ROS_INFO("Costmap::a_star_path_server_callback: req.goal: %i, %i", req.goal_x, req.goal_y);
-	cv::Point s(req.start_x + this->map_offset.x, req.start_y + this->map_offset.y);
-	cv::Point g(req.goal_x + this->map_offset.x, req.goal_y + this->map_offset.y);
+	
+	//ROS_INFO("Costmap::a_star_path_server_callback: req.start: %.2f, %.2f", req.start_x, req.start_y);
+	//ROS_INFO("Costmap::a_star_path_server_callback: req.goal: %.2f, %.2f", req.goal_x, req.goal_y);
+	cv::Point2d ls(double(req.start_x), double(req.start_y));
+	cv::Point s;
+	this->utils->local_to_cells(ls, s);
+	s.x += this->map_offset.x;
+	s.y += this->map_offset.y;
+	cv::Point2d lg(double(req.goal_x), double(req.goal_y));
+	cv::Point g;
 	//ROS_INFO("Costmap::a_star_path_server_callback: s: %i, %i", s.x, s.y);
+	this->utils->local_to_cells(lg, g);
+	g.x += this->map_offset.x;
+	g.y += this->map_offset.y;
 	//ROS_INFO("Costmap::a_star_path_server_callback: g: %i, %i", g.x, g.y);
 	std::vector<cv::Point> path;
 	double length = 0.0;
 	if(this->utils->a_star_path(s,g,path,length)){
 		for(size_t i=0; i<path.size(); i++){
 			cv::Point2d l;
-			this->utils->cells_to_local(path[i], l);
-			resp.xs.push_back(l.x - this->map_offset.x);
-			resp.ys.push_back(l.y - this->map_offset.y);
+			cv::Point ll(path[i].x - this->map_offset.x, path[i].y-this->map_offset.y);
+			this->utils->cells_to_local(ll, l);
+			resp.xs.push_back(l.x);
+			resp.ys.push_back(l.y);
 		}
 		resp.path_length = length;
 		resp.success = true;
 		
+		/*
 		cv::Mat tst = this->utils->displayPlot.clone();
 		cv::circle(tst, s, 2, cv::Scalar(0,180,0), -1);
 		cv::circle(tst, g, 2, cv::Scalar(0,0,180), -1);
 
-		//for(size_t i=0; i<path.size(); i++){
-		//	cv::circle(tst, path[i], 1, cv::Scalar(255,0,0), -1);		
-		//}
+		for(size_t i=0; i<path.size(); i++){
+			cv::circle(tst, path[i], 1, cv::Scalar(255,0,0), -1);
+		}
 
-		//cv::namedWindow("a_star_path", CV_WINDOW_NORMAL);
-		//cv::imshow("a_star_path", tst);
-		//cv::waitKey(100);
-		return true;	
+		cv::namedWindow("a_star_path", CV_WINDOW_NORMAL);
+		cv::imshow("a_star_path", tst);
+		cv::waitKey(100);
+		return true;
+		*/
 	}
 	else{
 		resp.path_length = INFINITY;

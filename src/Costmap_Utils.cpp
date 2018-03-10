@@ -26,6 +26,7 @@ Costmap_Utils::Costmap_Utils(Costmap* costmap){
 	this->costmap = costmap;
 	this->rand_seed = costmap->param_seed;
 	this->test_environment_img = costmap->test_environment_img;
+	this->test_obstacle_img = costmap->test_obstacle_img;
 
 	// set heuristic for A*
 	this->a_star_heuristic_weight = 1.0;//2.75; // 1->inf get greedier
@@ -87,7 +88,7 @@ Costmap_Utils::Costmap_Utils(Costmap* costmap){
 	ROS_INFO("    map size: %i, %i (cells)", this->cells.cols, this->cells.rows);
 
 	// create obs mat for trials
-	if(this->test_environment_img.empty()){
+	if(this->test_obstacle_img.empty()){
 		srand(this->rand_seed);
 		this->create_obs_mat(); // create random obstacles
 	}
@@ -229,7 +230,7 @@ Costmap_Utils::~Costmap_Utils() {}
 
 void Costmap_Utils::seed_img(){
 
-	this->Obs_Mat = cv::imread(this->test_environment_img, CV_LOAD_IMAGE_GRAYSCALE);
+	this->Obs_Mat = cv::imread(this->test_obstacle_img, CV_LOAD_IMAGE_GRAYSCALE);
 	
 	if(!this->Obs_Mat.data){
 		ROS_ERROR("Costmap::seed_img::Could NOT load img");
@@ -381,15 +382,15 @@ void Costmap_Utils::cells_to_local_path(const std::vector<cv::Point> &cells_path
 
 void Costmap_Utils::cells_to_local(const cv::Point &cell, cv::Point2d &loc){
 	// convert from cell to local
-	loc.x = double(cell.x) / this->meters_per_cell;
-	loc.y = double(cell.y) / this->meters_per_cell;
+	loc.x = double(cell.x) * this->meters_per_cell;
+	loc.y = double(cell.y) * this->meters_per_cell;
 }
 
 
 void Costmap_Utils::local_to_cells(const cv::Point2d &loc, cv::Point &cell){
 	// move from local x/y meters to costmap cell
-	cell.x = round(this->cells_per_meter * loc.x);
-	cell.y = round(this->cells_per_meter * loc.y);
+	cell.x = round(this->cells_per_meter * double(loc.x));
+	cell.y = round(this->cells_per_meter * double(loc.y));
 }
 
 double Costmap_Utils::get_local_heading(const cv::Point2d &l1, const cv::Point2d &l2){
