@@ -15,8 +15,9 @@ using namespace cv;
 Costmap::Costmap(ros::NodeHandle nHandle){
 
 	ROS_INFO("Costmap Bridge::Costmap::Costmap: loading rosparams");
-
+    std::string pkg_directory;
 	ros::param::get("/test_environment_img", this->test_environment_img);
+	ros::param::get("/world_directory", pkg_directory);
 	ros::param::get("/test_obstacle_img", this->test_obstacle_img);
 	ros::param::get("/agent_index",this-> agent_index);
 	ros::param::get("/param_number", this->param_seed);
@@ -28,6 +29,13 @@ Costmap::Costmap(ros::NodeHandle nHandle){
 	ros::param::get("/meters_per_cell", this->meters_per_cell);
 	ros::param::get("/display_costmap_path", this->display_costmap);
 	ros::param::get("/inflation_iters", this->inflation_iters);
+	ros::param::get("/use_gazebo", this->use_gazebo);
+
+    this->test_obstacle_img = pkg_directory + this->test_obstacle_img;
+    this->test_environment_img = pkg_directory + this->test_environment_img;
+    
+     
+    
 
 	this->origin_lat = (this->north_lat + this->south_lat)/2.0;
 	this->origin_lon = (this->east_lon + this->west_lon)/2.0;
@@ -38,7 +46,7 @@ Costmap::Costmap(ros::NodeHandle nHandle){
 	ROS_INFO("   agent_index %i", this->agent_index);
 	ROS_INFO("   parameter_seed %i", this->param_seed);
 	ROS_INFO("   pay_obstacle_costs %i", this->pay_obstacle_costs);
-	ROS_INFO("   north_lat %0.6f", this->north_lat);
+    ROS_INFO("   north_lat %0.6f", this->north_lat);
 	ROS_INFO("   south_lat %0.6f", this->south_lat);
 	ROS_INFO("   west_lon %0.6f", this->west_lon);
 	ROS_INFO("   east_lon %0.6f", this->east_lon);
@@ -47,6 +55,7 @@ Costmap::Costmap(ros::NodeHandle nHandle){
 	ROS_INFO("   meters_per_cell %0.2f", this->meters_per_cell);
 	ROS_INFO("   display_costmap %i", this->display_costmap);
 	ROS_INFO("   inflation_iters %i", this->inflation_iters);
+	ROS_INFO("   use_gazebo %i", this->use_gazebo);
 
 	// initialize cell locs
 	this->cell_loc= Point(-1,-1);

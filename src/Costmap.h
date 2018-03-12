@@ -107,7 +107,7 @@ public:
 
 	double travelSpeed; // my travelling speed
 	double set_alt;
-	bool pay_obstacle_costs, display_costmap;
+	bool pay_obstacle_costs, display_costmap, use_gazebo;
 	int n_obstacles, inflation_iters;
 	
 	ros::Time act_time, plot_time, status_time;

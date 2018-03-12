@@ -72,7 +72,7 @@ public:
 private:
 	// useful stuff
 	Costmap* costmap;
-	bool pay_obstacle_costs; // am I affected by obstacles?
+	bool pay_obstacle_costs, use_gazebo; // am I affected by obstacles?
 	std::string test_environment_img, test_obstacle_img;
 
 	double north_lat, south_lat, east_lon, west_lon, origin_lat, origin_lon;

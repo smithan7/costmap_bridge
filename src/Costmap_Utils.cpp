@@ -28,7 +28,7 @@ Costmap_Utils::Costmap_Utils(Costmap* costmap){
 	this->test_environment_img = costmap->test_environment_img;
 	this->test_obstacle_img = costmap->test_obstacle_img;
 	this->n_obstacles = costmap->n_obstacles;
-	ROS_ERROR("n_obstacles: %i", this->n_obstacles);
+	this->use_gazebo = costmap->use_gazebo;
 
 	// set heuristic for A*
 	this->a_star_heuristic_weight = 1.0;//2.75; // 1->inf get greedier
@@ -79,6 +79,18 @@ Costmap_Utils::Costmap_Utils(Costmap* costmap){
 	this->map_width_meters = this->get_global_distance(this->north_lat, this->west_lon, this->north_lat, this->east_lon);
 	    this->map_height_meters = this->get_global_distance(this->north_lat, this->west_lon, this->south_lat, this->west_lon);
 	}
+	
+	if(this->use_gazebo){
+		if(this->map_width_meters > this->map_height_meters){
+			this->map_height_meters = 90.0 * this->map_height_meters / this->map_width_meters;
+			this->map_width_meters = 90.0;
+		}
+		else{
+			this->map_width_meters = 90.0 * this->map_width_meters / this->map_height_meters;
+			this->map_height_meters = 90.0;
+		}
+	}
+	
 	ROS_INFO("    map size: %0.2f, %0.2f (meters)", this->map_width_meters, this->map_height_meters);
 
 	// set cells per meter
@@ -122,7 +134,7 @@ Costmap_Utils::Costmap_Utils(Costmap* costmap){
 	}
 	this->build_cells_mat();
 	this->build_display_plot();
-	this->display_costmap();// show nice display plot and number it
+	//this->display_costmap();// show nice display plot and number it
 
 	// announce I am initialized!
 	this->need_initialization = false;
@@ -163,80 +175,33 @@ void Costmap_Utils::build_cells_mat(){
 	}
 }
 
-/*
-void Costmap_Utils::create_obs_mat(){
+void Costmap_Utils::seed_obs_mat(){
 
-	this->Obs_Mat = cv::Mat::zeros(this->map_height_cells, this->map_width_cells, CV_8UC1);
-	this->obstacles.clear();
-	ROS_INFO("DMCTS::World::make_obs_mat: making obstacles");
-	while(this->obstacles.size() < 10){
-		//ROS_INFO("making obstacle");
-		// create a potential obstacle
-		double rr = rand_double_in_range(1,10.0*this->cells_per_meter );
-		double xx = rand_double_in_range(0,this->map_width_cells);
-		double yy = rand_double_in_range(0,this->map_height_cells);
-		//ROS_INFO("obs: %.1f, %.1f, r =  %.1f", xx, yy, rr);
-		// check if any starting locations are in an obstacle
-		bool flag = true;
-		for(size_t s=0; s<starting_locs.size(); s++){
-			double d = sqrt(pow(xx-starting_locs[s].x,2) + pow(yy-starting_locs[s].y,2));
-			//ROS_INFO("starting_locs: %.1f, %.1f, d = %.1f", starting_locs[s].x, starting_locs[s].y, d);
-			if(rr+2 >= d ){
-				// starting loc is in obstacle
-				flag = false;
-				break;
-			}
-		}
+	this->Obs_Mat = cv::Mat::zeros(cv::Size(int(this->map_width_meters), int(this->map_height_meters)), CV_8UC1);
 
-		if(flag){
-			for(size_t s=0; s<this->obstacles.size(); s++){
-				double d = sqrt(pow(xx-this->obstacles[s][0],2) + pow(yy-this->obstacles[s][1],2));
-				//ROS_INFO("starting_locs: %.1f, %.1f, d = %.1f", starting_locs[s].x, starting_locs[s].y, d);
-				if(rr+1 >= d || this->obstacles[s][2]+1 >= d){
-					// obstacle is in obstacle
-					flag = false;
-					break;
-				}
-			}			
-		}
-		if(flag){
-			std::vector<double> temp = {xx,yy,rr};
-			this->obstacles.push_back(temp);
-		}
+	cv::Mat temp_obs = cv::imread(this->test_obstacle_img, CV_LOAD_IMAGE_GRAYSCALE);
+	if(temp_obs.empty()){
+	    ROS_ERROR("Costmap_Bridge::Costmap_Utils::seed_obs_mat: IMG FAILED TO LOAD");
+	    return;
 	}
-
-	for(size_t i=0; i<obstacles.size(); i++){
-		cv::circle(this->Obs_Mat, cv::Point(this->obstacles[i][0], this->obstacles[i][1]), this->obstacles[i][2], cv::Scalar(255), -1);
+    /*
+	cv::namedWindow("Costmap_Bridge::Costmap_Utils::seed_obs_mat:temp Obstacles", cv::WINDOW_NORMAL);
+	cv::imshow("Costmap_Bridge::Costmap_Utils::seed_obs_mat:temp Obstacles", temp_obs);
+	cv::waitKey(0);
+    */
+	if(!temp_obs.data){
+		ROS_ERROR("Costmap_Bridge::Costmap_Utils::seed_obs_mat::Could NOT load img");
+		return;
 	}
-
-	//cv::namedWindow("Costmap_Utils::Obstacles", cv::WINDOW_NORMAL);
-	//cv::imshow("Costmap_Utils::Obstacles", this->Obs_Mat);
-	//cv::waitKey(0);
-
-	cv::resize(this->Obs_Mat, this->Obs_Mat, this->cells.size());
-
-	// go through every pixel of the image and occupancy map
-	for(int i=0; i<this->Obs_Mat.cols; i++){
-		for(int j=0; j<this->Obs_Mat.rows; j++){
-			cv::Point p(i,j);
-			if(this->Obs_Mat.at<uchar>(p) == 255){
-				this->cells.at<short>(p) = 255;
-			}
-			else{
-				this->cells.at<short>(p) = int(100.0 * (double(this->Obs_Mat.at<uchar>(p))/255.0));
-			}
-		}
-	}
-
-	// inflate the obstacles I have detected
-	// now inflate obstacles
-	cv::Mat s = cv::Mat::zeros(this->cells.size(), CV_16S);
-	for(int i=0; i<this->inflation_iters; i++){
-		cv::blur(this->cells,s,cv::Size(5,5));
-		cv::max(this->cells,s,this->cells);
-	}
+	
+	cv::resize(temp_obs, this->Obs_Mat, this->cells.size());
+    /*
+	cv::namedWindow("Costmap_Bridge::Costmap_Utils::seed_obs_mat:Obstacles", cv::WINDOW_NORMAL);
+	cv::imshow("Costmap_Bridge::Costmap_Utils::seed_obs_mat:Obstacles", this->Obs_Mat);
+	cv::waitKey(0);
+	*/
 }
-*/
+
 void Costmap_Utils::make_obs_mat(){
 	this->Obs_Mat = cv::Mat::zeros(this->cells.size(), CV_8UC1);
 	
@@ -311,28 +276,6 @@ void Costmap_Utils::test_a_star_planner(const cv::Point &s, const cv::Point &g){
 }
 
 Costmap_Utils::~Costmap_Utils() {}
-
-void Costmap_Utils::seed_obs_mat(){
-
-	this->Obs_Mat = cv::Mat::zeros(cv::Size(int(this->map_width_meters), int(this->map_height_meters)), CV_8UC1);
-
-	cv::Mat temp_obs = cv::imread(this->test_obstacle_img, CV_LOAD_IMAGE_GRAYSCALE);
-
-	//cv::namedWindow("DMCTS_World::World::seed_obs_mat:Obstacles", cv::WINDOW_NORMAL);
-	//cv::imshow("DMCTS_World::World::seed_obs_mat:Obstacles", temp_env);
-	//cv::waitKey(0);
-
-	if(!temp_obs.data){
-		ROS_ERROR("Costmap_Bridge::Costmap_Utils::seed_obs_mat::Could NOT load img");
-		return;
-	}
-	
-	cv::resize(temp_obs, this->Obs_Mat, this->cells.size());
-
-	//cv::namedWindow("DMCTS_World::World::seed_obs_mat:Obstacles", cv::WINDOW_NORMAL);
-	//cv::imshow("DMCTS_World::World::seed_obs_mat:Obstacles", this->Env_Mat);
-	//cv::waitKey(0);
-}
 
 void Costmap_Utils::update_cells( const nav_msgs::OccupancyGrid& cost_in){
 	// if I haven't been initialized then don't include
