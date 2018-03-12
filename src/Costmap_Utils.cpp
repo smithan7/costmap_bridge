@@ -194,8 +194,10 @@ void Costmap_Utils::seed_obs_mat(){
 		return;
 	}
 	
-	cv::resize(temp_obs, this->Obs_Mat, this->cells.size());
-    /*
+	cv::Mat temp;               // dst must be a different Mat
+    cv::flip(temp_obs, temp, 1); 
+	cv::resize(temp, this->Obs_Mat, this->Obs_Mat.size());
+	/*
 	cv::namedWindow("Costmap_Bridge::Costmap_Utils::seed_obs_mat:Obstacles", cv::WINDOW_NORMAL);
 	cv::imshow("Costmap_Bridge::Costmap_Utils::seed_obs_mat:Obstacles", this->Obs_Mat);
 	cv::waitKey(0);
