@@ -42,7 +42,7 @@ public:
 	bool a_star_path(const cv::Point &sLoc, const cv::Point &gLoc, std::vector<cv::Point> &path, double &length);
 	void cells_to_local(const cv::Point &cell, cv::Point2d &loc);
 	void display_costmap(); // show nice display plot and number it
-	void build_cells_plot(); // build nice display plot
+	void build_display_plot(); // build nice display plot
 	void add_agent_to_costmap_plot(const cv::Scalar &color, const std::vector<cv::Point> &myPath, const cv::Point &cLoc);
 
 	void global_to_local(const double &lat_in, const double &lon_in, double &x_out, double &y_out); // gps to local x/y from origin which is the center of the map
@@ -67,6 +67,7 @@ public:
 	int map_width_cells, map_height_cells;
 	double map_width_meters, map_height_meters;
 	double cells_per_meter, meters_per_cell;
+	cv::Point offset_cells;
 
 private:
 	// useful stuff
@@ -82,6 +83,8 @@ private:
 	cv::Vec3b cObsFree, cInfFree, cObsOccupied, cInfOccupied;
 	double obsFree_cost, infFree_cost, obsOcc_cost, infOcc_cost;
 	bool need_initialization;
+	std::vector<cv::Point2d> starting_locs;
+	int n_obstacles;
 
 	// 1 = free space // 2 = inferred free space // 3 = domFree
 	// 101 = unknown
@@ -89,12 +92,12 @@ private:
 
 	// functions
     // use satelite info to seed the exploration
-    void create_obs_mat();
     cv::Mat Obs_Mat;
 	std::vector< std::vector<double> > obstacles;
 	int rand_seed;
 	void make_obs_mat();
-	void seed_img();
+	void seed_obs_mat();
+	void build_cells_mat();
 
 	// used to get from occ_grid array to cells
 	cv::Point get_cell_index(const int &l);

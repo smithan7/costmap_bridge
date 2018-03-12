@@ -19,13 +19,15 @@ Costmap::Costmap(ros::NodeHandle nHandle){
 	ros::param::get("/test_environment_img", this->test_environment_img);
 	ros::param::get("/test_obstacle_img", this->test_obstacle_img);
 	ros::param::get("/agent_index",this-> agent_index);
-	ros::param::get("/parameter_seed", this->param_seed);
+	ros::param::get("/param_number", this->param_seed);
 	ros::param::get("/pay_obstacle_costs", this->pay_obstacle_costs);
 	ros::param::get("/north_lat", this->north_lat);
 	ros::param::get("/south_lat", this->south_lat);
 	ros::param::get("/east_lon", this->east_lon);
 	ros::param::get("/west_lon", this->west_lon);
 	ros::param::get("/meters_per_cell", this->meters_per_cell);
+	ros::param::get("/display_costmap_path", this->display_costmap);
+	ros::param::get("/inflation_iters", this->inflation_iters);
 
 	this->origin_lat = (this->north_lat + this->south_lat)/2.0;
 	this->origin_lon = (this->east_lon + this->west_lon)/2.0;
@@ -43,6 +45,8 @@ Costmap::Costmap(ros::NodeHandle nHandle){
 	ROS_INFO("   origin_lat %0.6f", this->origin_lat);
 	ROS_INFO("   origin_lon %0.6f", this->origin_lon);
 	ROS_INFO("   meters_per_cell %0.2f", this->meters_per_cell);
+	ROS_INFO("   display_costmap %i", this->display_costmap);
+	ROS_INFO("   inflation_iters %i", this->inflation_iters);
 
 	// initialize cell locs
 	this->cell_loc= Point(-1,-1);
@@ -69,6 +73,7 @@ Costmap::Costmap(ros::NodeHandle nHandle){
 	this->set_alt = 0.0;
 	this->travelSpeed = 0.0;
 	this->cells_per_meter = 1.0/ meters_per_cell;
+	this->n_obstacles = 10;
 
 	/////////////////////// Subscribers /////////////////////////////
 	// update the costmap
@@ -98,10 +103,6 @@ Costmap::Costmap(ros::NodeHandle nHandle){
 	// really initialize costmap
 	this->costmapInitialized = false;
 	this->utils = new Costmap_Utils(this);
-	this->map_offset_meters.x = this->utils->map_width_meters / 2.0;
-	this->map_offset_meters.y = this->utils->map_height_meters / 2.0;
-	this->map_offset.x = this->utils->map_width_cells / 2.0;
-	this->map_offset.y = this->utils->map_height_cells / 2.0;
 }
 
 Costmap::~Costmap(){
@@ -127,21 +128,28 @@ bool Costmap::a_star_path_server_callback(custom_messages::Get_A_Star_Path::Requ
 	cv::Point2d ls(double(req.start_x), double(req.start_y));
 	cv::Point s;
 	this->utils->local_to_cells(ls, s);
-	s.x += this->map_offset.x;
-	s.y += this->map_offset.y;
 	cv::Point2d lg(double(req.goal_x), double(req.goal_y));
 	cv::Point g;
 	//ROS_INFO("Costmap::a_star_path_server_callback: s: %i, %i", s.x, s.y);
 	this->utils->local_to_cells(lg, g);
-	g.x += this->map_offset.x;
-	g.y += this->map_offset.y;
 	//ROS_INFO("Costmap::a_star_path_server_callback: g: %i, %i", g.x, g.y);
 	std::vector<cv::Point> path;
 	double length = 0.0;
+	
+	if(this->display_costmap){
+	    cv::Mat tst = this->utils->displayPlot.clone();
+	    cv::circle(tst, s, 2, cv::Scalar(0,180,0), -1);
+	    cv::circle(tst, g, 2, cv::Scalar(0,0,180), -1);
+
+	    cv::namedWindow("a_star_path", CV_WINDOW_NORMAL);
+	    cv::imshow("a_star_path", tst);
+	    cv::waitKey(100);
+	}
+	
 	if(this->utils->a_star_path(s,g,path,length)){
 		for(size_t i=0; i<path.size(); i++){
 			cv::Point2d l;
-			cv::Point ll(path[i].x - this->map_offset.x, path[i].y-this->map_offset.y);
+			cv::Point ll(path[i].x, path[i].y);
 			this->utils->cells_to_local(ll, l);
 			resp.xs.push_back(l.x);
 			resp.ys.push_back(l.y);
@@ -149,20 +157,21 @@ bool Costmap::a_star_path_server_callback(custom_messages::Get_A_Star_Path::Requ
 		resp.path_length = length;
 		resp.success = true;
 		
-		/*
-		cv::Mat tst = this->utils->displayPlot.clone();
-		cv::circle(tst, s, 2, cv::Scalar(0,180,0), -1);
-		cv::circle(tst, g, 2, cv::Scalar(0,0,180), -1);
+		if(this->display_costmap){
+		    cv::Mat tst = this->utils->displayPlot.clone();
+		    cv::circle(tst, s, 2, cv::Scalar(0,180,0), -1);
+		    cv::circle(tst, g, 2, cv::Scalar(0,0,180), -1);
 
-		for(size_t i=0; i<path.size(); i++){
-			cv::circle(tst, path[i], 1, cv::Scalar(255,0,0), -1);
+		    for(size_t i=0; i<path.size(); i++){
+			    cv::circle(tst, path[i], 1, cv::Scalar(255,0,0), -1);
+		    }
+
+		    cv::namedWindow("a_star_path", CV_WINDOW_NORMAL);
+		    cv::imshow("a_star_path", tst);
+		    cv::waitKey(100);
 		}
-
-		cv::namedWindow("a_star_path", CV_WINDOW_NORMAL);
-		cv::imshow("a_star_path", tst);
-		cv::waitKey(100);
 		return true;
-		*/
+		
 	}
 	else{
 		resp.path_length = INFINITY;
@@ -235,7 +244,7 @@ void Costmap::DJI_Bridge_status_callback( const custom_messages::DJI_Bridge_Stat
 	if(ros::Time::now() - this->plot_time > this->plot_interval){
 		this->plot_time = ros::Time::now();
 
-		this->utils->build_cells_plot();
+		this->utils->build_display_plot();
 		Scalar blue = Scalar(255,0,0);
 		this->utils->add_agent_to_costmap_plot( blue, this->cells_path, this->cell_loc);
 		Scalar orange = Scalar(0,165,255);
@@ -344,7 +353,7 @@ void Costmap::find_path_and_publish(){
         		this->utils->cells_to_local_path(this->cells_path, local_path);
 
 				// assemble plot and display it
-				this->utils->build_cells_plot();
+				this->utils->build_display_plot();
 				Scalar blue = Scalar(255,0,0);
 				this->utils->add_agent_to_costmap_plot( blue, this->cells_path, this->cell_loc);
 				Scalar orange = Scalar(0,165,255);

@@ -27,6 +27,8 @@ Costmap_Utils::Costmap_Utils(Costmap* costmap){
 	this->rand_seed = costmap->param_seed;
 	this->test_environment_img = costmap->test_environment_img;
 	this->test_obstacle_img = costmap->test_obstacle_img;
+	this->n_obstacles = costmap->n_obstacles;
+	ROS_ERROR("n_obstacles: %i", this->n_obstacles);
 
 	// set heuristic for A*
 	this->a_star_heuristic_weight = 1.0;//2.75; // 1->inf get greedier
@@ -69,8 +71,14 @@ Costmap_Utils::Costmap_Utils(Costmap* costmap){
 	this->origin_lat = costmap->origin_lat;
 	this->origin_lon = costmap->origin_lon;
 
+   	if(this->test_obstacle_img.empty()){
+    	this->map_width_meters = 100.0;
+	    this->map_height_meters = 100.0;
+	}
+	else{
 	this->map_width_meters = this->get_global_distance(this->north_lat, this->west_lon, this->north_lat, this->east_lon);
-	this->map_height_meters = this->get_global_distance(this->north_lat, this->west_lon, this->south_lat, this->west_lon);
+	    this->map_height_meters = this->get_global_distance(this->north_lat, this->west_lon, this->south_lat, this->west_lon);
+	}
 	ROS_INFO("    map size: %0.2f, %0.2f (meters)", this->map_width_meters, this->map_height_meters);
 
 	// set cells per meter
@@ -86,17 +94,35 @@ Costmap_Utils::Costmap_Utils(Costmap* costmap){
 	cv::Mat b = cv::Mat::ones( this->map_height_cells, this->map_width_cells, CV_16S)*this->infFree;
 	this->cells = b.clone();
 	ROS_INFO("    map size: %i, %i (cells)", this->cells.cols, this->cells.rows);
+	this->offset_cells.x = this->cells.cols / 2.0;
+	this->offset_cells.y = this->cells.rows / 2.0;
 
-	// create obs mat for trials
+	// agent starting locations
+	this->starting_locs.push_back(cv::Point2d(-15,-15));
+	this->starting_locs.push_back(cv::Point2d(15,15));
+	this->starting_locs.push_back(cv::Point2d(-15,15));
+	this->starting_locs.push_back(cv::Point2d(15,-15));
+	this->starting_locs.push_back(cv::Point2d(0,15));
+	this->starting_locs.push_back(cv::Point2d(15,0));
+	this->starting_locs.push_back(cv::Point2d(0,-15));
+	this->starting_locs.push_back(cv::Point2d(-15,0));
+	
+	// reset randomization
+	srand(this->rand_seed);
 	if(this->test_obstacle_img.empty()){
-		srand(this->rand_seed);
-		this->create_obs_mat(); // create random obstacles
+		this->make_obs_mat(); // create random obstacles
 	}
 	else{
-		this->seed_img(); // seed into cells satelite information
+		this->seed_obs_mat(); // seed into cells satelite information
 	}
-	this->build_cells_plot(); 	// initialize display plot
-	//this->display_costmap();// show nice display plot and number it
+	cv::Mat s = cv::Mat::zeros(this->Obs_Mat.size(), CV_8UC1);
+	for(int i=0; i<this->inflation_iters; i++){
+		cv::blur(this->Obs_Mat,s,cv::Size(5,5));
+		cv::max(this->Obs_Mat,s,this->Obs_Mat);
+	}
+	this->build_cells_mat();
+	this->build_display_plot();
+	this->display_costmap();// show nice display plot and number it
 
 	// announce I am initialized!
 	this->need_initialization = false;
@@ -121,17 +147,24 @@ double Costmap_Utils::rand_double_in_range(const double &min, const double &max)
 	return (max - min) * double(rand()) / double(RAND_MAX) + min;
 }
 
-void Costmap_Utils::create_obs_mat(){
+void Costmap_Utils::build_cells_mat(){
+	cv::resize(this->Obs_Mat, this->Obs_Mat, this->cells.size());
+	// go through every pixel of the image and occupancy map
+	for(int i=0; i<this->Obs_Mat.cols; i++){
+		for(int j=0; j<this->Obs_Mat.rows; j++){
+			cv::Point p(i,j);
+			if(this->Obs_Mat.at<uchar>(p) == 255){
+				this->cells.at<short>(p) = 255;
+			}
+			else{
+				this->cells.at<short>(p) = int(100.0 * (double(this->Obs_Mat.at<uchar>(p))/255.0));
+			}
+		}
+	}
+}
 
-	std::vector<cv::Point2d> starting_locs;
-	starting_locs.push_back(cv::Point2d(25,25));
-	starting_locs.push_back(cv::Point2d(75,75));
-	starting_locs.push_back(cv::Point2d(25,75));
-	starting_locs.push_back(cv::Point2d(75,25));
-	starting_locs.push_back(cv::Point2d(50,75));
-	starting_locs.push_back(cv::Point2d(75,50));
-	starting_locs.push_back(cv::Point2d(50,25));
-	starting_locs.push_back(cv::Point2d(25,50));
+/*
+void Costmap_Utils::create_obs_mat(){
 
 	this->Obs_Mat = cv::Mat::zeros(this->map_height_cells, this->map_width_cells, CV_8UC1);
 	this->obstacles.clear();
@@ -202,8 +235,59 @@ void Costmap_Utils::create_obs_mat(){
 		cv::blur(this->cells,s,cv::Size(5,5));
 		cv::max(this->cells,s,this->cells);
 	}
+}
+*/
+void Costmap_Utils::make_obs_mat(){
+	this->Obs_Mat = cv::Mat::zeros(this->cells.size(), CV_8UC1);
+	
+	this->obstacles.clear();
+	//ROS_INFO("DMCTS_World::World::make_obs_mat: making obstacles");
+	while(this->obstacles.size() < this->n_obstacles){
+		//ROS_INFO("making obstacle");
+		// create a potnetial obstacle
+		double rr = rand_double_in_range(1.0,10.0);
+		double xx = rand_double_in_range(-this->map_width_meters/2.1,this->map_width_meters/2.1);
+		double yy = rand_double_in_range(-this->map_height_meters/2.1,this->map_height_meters/2.1);
+		//ROS_INFO("obs: %.1f, %.1f, r =  %.1f", xx, yy, rr);
+		// check if any starting locations are in an obstacle
+		bool flag = true;
+		for(size_t s=0; s<this->starting_locs.size(); s++){
+			double d = sqrt(pow(xx-this->starting_locs[s].x,2) + pow(yy-this->starting_locs[s].y,2));
+			//ROS_INFO("starting_locs: %.1f, %.1f, d = %.1f", this->starting_locs[s].x+this->map_width_meters/2, this->starting_locs[s].y+this->map_height_meters/2, d);
+			if(rr+2 >= d ){
+				// starting loc is in obstacle
+				flag = false;
+				break;
+			}
+		}
 
+		if(flag){
+			for(size_t s=0; s<this->obstacles.size(); s++){
+				double d = sqrt(pow(xx-this->obstacles[s][0],2) + pow(yy-this->obstacles[s][1],2));
+				if(rr + this->obstacles[s][2]+1 >= d){
+					// obstacle is in obstacle so don't make
+					flag = false;
+					break;
+				}
+			}			
+		}
+		if(flag){
+			std::vector<double> temp = {xx,yy,rr};
+			this->obstacles.push_back(temp);
+		}
+	}
 
+	for(size_t i=0; i<this->obstacles.size(); i++){
+	    cv::Point lp;
+	    cv::Point2d op(this->obstacles[i][0], this->obstacles[i][1]);
+	    this->local_to_cells(op, lp);
+	    double rr = this->obstacles[i][2] * this->cells_per_meter;
+		cv::circle(this->Obs_Mat, lp, rr, cv::Scalar(255), -1);
+	}
+
+	//cv::namedWindow("Costmap_Bridge::Costmap_utils::make_obs_mat:Obstacles", cv::WINDOW_NORMAL);
+	//cv::imshow("Costmap_Bridge::Costmap_utils::make_obs_mat:Obstacles", this->Obs_Mat);
+	//cv::waitKey(0);
 }
 
 void Costmap_Utils::test_a_star_planner(const cv::Point &s, const cv::Point &g){
@@ -228,38 +312,26 @@ void Costmap_Utils::test_a_star_planner(const cv::Point &s, const cv::Point &g){
 
 Costmap_Utils::~Costmap_Utils() {}
 
-void Costmap_Utils::seed_img(){
+void Costmap_Utils::seed_obs_mat(){
 
-	this->Obs_Mat = cv::imread(this->test_obstacle_img, CV_LOAD_IMAGE_GRAYSCALE);
-	
-	if(!this->Obs_Mat.data){
-		ROS_ERROR("Costmap::seed_img::Could NOT load img");
+	this->Obs_Mat = cv::Mat::zeros(cv::Size(int(this->map_width_meters), int(this->map_height_meters)), CV_8UC1);
+
+	cv::Mat temp_obs = cv::imread(this->test_obstacle_img, CV_LOAD_IMAGE_GRAYSCALE);
+
+	//cv::namedWindow("DMCTS_World::World::seed_obs_mat:Obstacles", cv::WINDOW_NORMAL);
+	//cv::imshow("DMCTS_World::World::seed_obs_mat:Obstacles", temp_env);
+	//cv::waitKey(0);
+
+	if(!temp_obs.data){
+		ROS_ERROR("Costmap_Bridge::Costmap_Utils::seed_obs_mat::Could NOT load img");
 		return;
 	}
-
-	cv::resize(this->Obs_Mat, this->Obs_Mat, this->cells.size());
 	
-	// go through every pixel of the image and occupancy map
-	for(int i=0; i<this->Obs_Mat.cols; i++){
-		for(int j=0; j<this->Obs_Mat.rows; j++){
-			cv::Point p(i,j);
-			if(this->Obs_Mat.at<uchar>(p) == 255){
-				this->cells.at<short>(p) = 255;
-			}
-			else{
-				this->cells.at<short>(p) = int(100.0 * (double(this->Obs_Mat.at<uchar>(p))/255.0));
-			}
-		}
-	}
+	cv::resize(temp_obs, this->Obs_Mat, this->cells.size());
 
-	// inflate the obstacles I have detected
-	// now inflate obstacles
-	cv::Mat s = cv::Mat::zeros(this->cells.size(), CV_16S);
-	for(int i=0; i<this->inflation_iters; i++){
-		cv::blur(this->cells,s,cv::Size(5,5));
-		cv::max(this->cells,s,this->cells);
-	}
-
+	//cv::namedWindow("DMCTS_World::World::seed_obs_mat:Obstacles", cv::WINDOW_NORMAL);
+	//cv::imshow("DMCTS_World::World::seed_obs_mat:Obstacles", this->Env_Mat);
+	//cv::waitKey(0);
 }
 
 void Costmap_Utils::update_cells( const nav_msgs::OccupancyGrid& cost_in){
@@ -382,15 +454,15 @@ void Costmap_Utils::cells_to_local_path(const std::vector<cv::Point> &cells_path
 
 void Costmap_Utils::cells_to_local(const cv::Point &cell, cv::Point2d &loc){
 	// convert from cell to local
-	loc.x = double(cell.x) * this->meters_per_cell;
-	loc.y = double(cell.y) * this->meters_per_cell;
+	loc.x = double(cell.x - this->offset_cells.x) * this->meters_per_cell;
+	loc.y = double(cell.y - this->offset_cells.y) * this->meters_per_cell;
 }
 
 
 void Costmap_Utils::local_to_cells(const cv::Point2d &loc, cv::Point &cell){
 	// move from local x/y meters to costmap cell
-	cell.x = round(this->cells_per_meter * double(loc.x));
-	cell.y = round(this->cells_per_meter * double(loc.y));
+	cell.x = round(this->cells_per_meter * double(loc.x)) + this->offset_cells.x;
+	cell.y = round(this->cells_per_meter * double(loc.y)) + this->offset_cells.y;
 }
 
 double Costmap_Utils::get_local_heading(const cv::Point2d &l1, const cv::Point2d &l2){
@@ -571,7 +643,7 @@ void Costmap_Utils::display_costmap(){ // show nice display plot and number it
 	cv::waitKey(0);
 }
 
-void Costmap_Utils::build_cells_plot(){
+void Costmap_Utils::build_display_plot(){
 	this->displayPlot= cv::Mat::zeros(cells.size(), CV_8UC3);
 	for(int i=0; i<this->cells.cols; i++){
 		for(int j=0; j<this->cells.rows; j++){

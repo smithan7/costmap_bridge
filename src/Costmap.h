@@ -98,18 +98,17 @@ public:
 
 	// map metadata
 	double meters_per_cell, cells_per_meter;
-	Point map_offset;
-	Point2d map_offset_meters;
-	Point2d map_local_origin;
+	cv::Point2d map_local_origin;
 
 	// costmap planning stuff
-	Point cell_loc, cell_goal;
-	Point2d local_loc, local_goal, published_local_goal;
+	cv::Point cell_loc, cell_goal;
+	cv::Point2d local_loc, local_goal, published_local_goal;
 	bool locationInitialized, costmapInitialized;
 
 	double travelSpeed; // my travelling speed
 	double set_alt;
-	bool pay_obstacle_costs;
+	bool pay_obstacle_costs, display_costmap;
+	int n_obstacles, inflation_iters;
 	
 	ros::Time act_time, plot_time, status_time;
 	ros::Duration act_interval, plot_interval, status_interval;
