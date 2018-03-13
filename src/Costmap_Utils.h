@@ -83,7 +83,7 @@ private:
 	cv::Vec3b cObsFree, cInfFree, cObsOccupied, cInfOccupied;
 	double obsFree_cost, infFree_cost, obsOcc_cost, infOcc_cost;
 	bool need_initialization;
-	std::vector<cv::Point2d> starting_locs;
+	std::vector<double> starting_xs, starting_ys;
 	int n_obstacles;
 
 	// 1 = free space // 2 = inferred free space // 3 = domFree

@@ -94,6 +94,7 @@ public:
 	int agent_index, param_seed;
 	std::string test_environment_img, test_obstacle_img;
 	double north_lat, south_lat, east_lon, west_lon, origin_lat, origin_lon;
+	std::vector<double> starting_xs, starting_ys;
 
 
 	// map metadata

@@ -29,6 +29,8 @@ Costmap_Utils::Costmap_Utils(Costmap* costmap){
 	this->test_obstacle_img = costmap->test_obstacle_img;
 	this->n_obstacles = costmap->n_obstacles;
 	this->use_gazebo = costmap->use_gazebo;
+	this->starting_xs = costmap->starting_xs;
+	this->starting_ys = costmap->starting_ys;
 
 	// set heuristic for A*
 	this->a_star_heuristic_weight = 1.0;//2.75; // 1->inf get greedier
@@ -108,16 +110,6 @@ Costmap_Utils::Costmap_Utils(Costmap* costmap){
 	ROS_INFO("    map size: %i, %i (cells)", this->cells.cols, this->cells.rows);
 	this->offset_cells.x = this->cells.cols / 2.0;
 	this->offset_cells.y = this->cells.rows / 2.0;
-
-	// agent starting locations
-	this->starting_locs.push_back(cv::Point2d(-15,-15));
-	this->starting_locs.push_back(cv::Point2d(15,15));
-	this->starting_locs.push_back(cv::Point2d(-15,15));
-	this->starting_locs.push_back(cv::Point2d(15,-15));
-	this->starting_locs.push_back(cv::Point2d(0,15));
-	this->starting_locs.push_back(cv::Point2d(15,0));
-	this->starting_locs.push_back(cv::Point2d(0,-15));
-	this->starting_locs.push_back(cv::Point2d(-15,0));
 	
 	// reset randomization
 	srand(this->rand_seed);
@@ -222,9 +214,9 @@ void Costmap_Utils::create_obs_mat(){
 		//ROS_INFO("obs: %.1f, %.1f, r =  %.1f", xx, yy, rr);
 		// check if any starting locations are in an obstacle
 		bool flag = true;
-		for(size_t s=0; s<this->starting_locs.size(); s++){
-			double d = sqrt(pow(xx-this->starting_locs[s].x,2) + pow(yy-this->starting_locs[s].y,2));
-			//ROS_INFO("starting_locs: %.1f, %.1f, d = %.1f", this->starting_locs[s].x+this->map_width_meters/2, this->starting_locs[s].y+this->map_height_meters/2, d);
+		for(size_t s=0; s<this->starting_xs.size(); s++){
+			double d = sqrt(pow(xx-this->starting_xs[s],2) + pow(yy-this->starting_ys[s],2));
+			//ROS_INFO("starting_locs: %.1f, %.1f, d = %.1f", this->starting_xs[s]+this->map_width_meters/2, this->starting_ys[s]+this->map_height_meters/2, d);
 			if(rr+2 >= d ){
 				// starting loc is in obstacle
 				flag = false;

@@ -30,6 +30,8 @@ Costmap::Costmap(ros::NodeHandle nHandle){
 	ros::param::get("/display_costmap_path", this->display_costmap);
 	ros::param::get("/inflation_iters", this->inflation_iters);
 	ros::param::get("/use_gazebo", this->use_gazebo);
+	ros::param::get("/starting_xs", this->starting_xs);
+	ros::param::get("/starting_ys", this->starting_ys);
 
     this->test_obstacle_img = pkg_directory + this->test_obstacle_img;
     this->test_environment_img = pkg_directory + this->test_environment_img;
@@ -56,6 +58,9 @@ Costmap::Costmap(ros::NodeHandle nHandle){
 	ROS_INFO("   display_costmap %i", this->display_costmap);
 	ROS_INFO("   inflation_iters %i", this->inflation_iters);
 	ROS_INFO("   use_gazebo %i", this->use_gazebo);
+	ROS_INFO("   starting_xs.size(): %i", int(this->starting_xs.size()));
+	ROS_INFO("   starting_ys.size(): %i", int(this->starting_ys.size()));
+
 
 	// initialize cell locs
 	this->cell_loc= Point(-1,-1);
