@@ -121,17 +121,9 @@ Costmap_Utils::Costmap_Utils(Costmap* costmap){
 	
 	// reset randomization
 	srand(this->rand_seed);
-	if(this->test_obstacle_img.empty()){
-		this->make_obs_mat(); // create random obstacles
-	}
-	else{
-		this->seed_obs_mat(); // seed into cells satelite information
-	}
-	cv::Mat s = cv::Mat::zeros(this->Obs_Mat.size(), CV_8UC1);
-	for(int i=0; i<this->inflation_iters; i++){
-		cv::blur(this->Obs_Mat,s,cv::Size(5,5));
-		cv::max(this->Obs_Mat,s,this->Obs_Mat);
-	}
+	this->get_obs_mat(); // create random / or load obstacles
+	ROS_INFO("DMCTS_world_node::   Word::World(): mat size: %i, %i (cells)", this->Obs_Mat.cols, this->Obs_Mat.rows);
+	
 	this->build_cells_mat();
 	this->build_display_plot();
 	//this->display_costmap();// show nice display plot and number it
@@ -175,44 +167,56 @@ void Costmap_Utils::build_cells_mat(){
 	}
 }
 
-void Costmap_Utils::seed_obs_mat(){
+void Costmap_Utils::get_obs_mat(){
 
 	this->Obs_Mat = cv::Mat::zeros(cv::Size(int(this->map_width_meters), int(this->map_height_meters)), CV_8UC1);
+	this->Env_Mat = cv::Mat::zeros(cv::Size(int(this->map_width_meters), int(this->map_height_meters)), CV_8UC3);
 
 	cv::Mat temp_obs = cv::imread(this->test_obstacle_img, CV_LOAD_IMAGE_GRAYSCALE);
-	if(temp_obs.empty()){
-	    ROS_ERROR("Costmap_Bridge::Costmap_Utils::seed_obs_mat: IMG FAILED TO LOAD");
-	    return;
-	}
-    /*
-	cv::namedWindow("Costmap_Bridge::Costmap_Utils::seed_obs_mat:temp Obstacles", cv::WINDOW_NORMAL);
-	cv::imshow("Costmap_Bridge::Costmap_Utils::seed_obs_mat:temp Obstacles", temp_obs);
-	cv::waitKey(0);
-    */
-	if(!temp_obs.data){
-		ROS_ERROR("Costmap_Bridge::Costmap_Utils::seed_obs_mat::Could NOT load img");
+	cv::Mat temp_env = cv::imread(this->test_environment_img, CV_LOAD_IMAGE_COLOR);
+
+	//cv::namedWindow("DMCTS_World::World::seed_obs_mat:Obstacles", cv::WINDOW_NORMAL);
+	//cv::imshow("DMCTS_World::World::seed_obs_mat:Obstacles", temp_env);
+	//cv::waitKey(0);
+
+	if(!temp_obs.data || !temp_env.data){
+		this->create_obs_mat();
+		ROS_WARN("World::seed_img::Could NOT load img, creating img");
 		return;
 	}
-	
-	cv::Mat temp;               // dst must be a different Mat
-    //cv::flip(temp_obs, temp, 1); 
-	cv::resize(temp_obs, this->Obs_Mat, this->Obs_Mat.size());
-	/*
-	cv::namedWindow("Costmap_Bridge::Costmap_Utils::seed_obs_mat:Obstacles", cv::WINDOW_NORMAL);
-	cv::imshow("Costmap_Bridge::Costmap_Utils::seed_obs_mat:Obstacles", this->Obs_Mat);
-	cv::waitKey(0);
-	*/
+	else{
+	    cv::Mat temp;               // dst must be a different Mat
+	    //cv::flip(temp_obs, temp, 1); 
+		cv::resize(temp_obs, this->Obs_Mat, this->Obs_Mat.size());
+		//cv::flip(temp_env, temp, 1);
+		cv::resize(temp_env, this->Env_Mat, this->Env_Mat.size());
+	}
+
+
+	cv::Mat s = cv::Mat::zeros(this->Obs_Mat.size(), CV_8UC1);
+	for(int i=0; i<this->inflation_iters; i++){
+		cv::blur(this->Obs_Mat,s,cv::Size(5,5));
+		cv::max(this->Obs_Mat,s,this->Obs_Mat);
+	}
+
+	//cv::namedWindow("DMCTS_World::World::seed_obs_mat:Obstacles", cv::WINDOW_NORMAL);
+	//cv::imshow("DMCTS_World::World::seed_obs_mat:Obstacles", this->Env_Mat);
+	//cv::waitKey(0);
 }
 
-void Costmap_Utils::make_obs_mat(){
-	this->Obs_Mat = cv::Mat::zeros(this->cells.size(), CV_8UC1);
+void Costmap_Utils::create_obs_mat(){
+
+	this->map_width_meters = 100.0;
+	this->map_height_meters = 100.0;
+	this->Obs_Mat = cv::Mat::zeros(cv::Size(int(this->map_width_meters), int(this->map_height_meters)), CV_8UC1);
+	this->Env_Mat = cv::Mat::zeros(cv::Size(int(this->map_width_meters), int(this->map_height_meters)), CV_8UC3);
 	
 	this->obstacles.clear();
 	//ROS_INFO("DMCTS_World::World::make_obs_mat: making obstacles");
 	while(this->obstacles.size() < this->n_obstacles){
 		//ROS_INFO("making obstacle");
 		// create a potnetial obstacle
-		double rr = rand_double_in_range(1.0,10.0);
+		double rr = rand_double_in_range(1,10);
 		double xx = rand_double_in_range(-this->map_width_meters/2.1,this->map_width_meters/2.1);
 		double yy = rand_double_in_range(-this->map_height_meters/2.1,this->map_height_meters/2.1);
 		//ROS_INFO("obs: %.1f, %.1f, r =  %.1f", xx, yy, rr);
@@ -245,15 +249,12 @@ void Costmap_Utils::make_obs_mat(){
 	}
 
 	for(size_t i=0; i<this->obstacles.size(); i++){
-	    cv::Point lp;
-	    cv::Point2d op(this->obstacles[i][0], this->obstacles[i][1]);
-	    this->local_to_cells(op, lp);
-	    double rr = this->obstacles[i][2] * this->cells_per_meter;
-		cv::circle(this->Obs_Mat, lp, rr, cv::Scalar(255), -1);
+		cv::circle(this->Obs_Mat, cv::Point((this->obstacles[i][0]+this->map_width_meters/2), (this->obstacles[i][1]+this->map_height_meters/2)), this->obstacles[i][2], cv::Scalar(255), -1);
+		cv::circle(this->Env_Mat, cv::Point((this->obstacles[i][0]+this->map_width_meters/2), (this->obstacles[i][1]+this->map_height_meters/2)), this->obstacles[i][2], cv::Scalar(255,0,0), -1);
 	}
 
-	//cv::namedWindow("Costmap_Bridge::Costmap_utils::make_obs_mat:Obstacles", cv::WINDOW_NORMAL);
-	//cv::imshow("Costmap_Bridge::Costmap_utils::make_obs_mat:Obstacles", this->Obs_Mat);
+	//cv::namedWindow("DMCTS_World::World::make_obs_mat:Obstacles", cv::WINDOW_NORMAL);
+	//cv::imshow("DMCTS_World::World::make_obs_mat:Obstacles", this->Obs_Mat);
 	//cv::waitKey(0);
 }
 

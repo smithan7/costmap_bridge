@@ -92,11 +92,11 @@ private:
 
 	// functions
     // use satelite info to seed the exploration
-    cv::Mat Obs_Mat;
+    cv::Mat Obs_Mat, Env_Mat;
 	std::vector< std::vector<double> > obstacles;
 	int rand_seed;
-	void make_obs_mat();
-	void seed_obs_mat();
+	void create_obs_mat();
+	void get_obs_mat();
 	void build_cells_mat();
 
 	// used to get from occ_grid array to cells
