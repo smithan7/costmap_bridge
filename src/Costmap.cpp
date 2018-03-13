@@ -14,14 +14,15 @@ using namespace cv;
 
 Costmap::Costmap(ros::NodeHandle nHandle){
 
+    std::vector<bool> team_pay_obstacle_costs;
 	ROS_INFO("Costmap Bridge::Costmap::Costmap: loading rosparams");
     std::string pkg_directory;
 	ros::param::get("/test_environment_img", this->test_environment_img);
 	ros::param::get("/world_directory", pkg_directory);
 	ros::param::get("/test_obstacle_img", this->test_obstacle_img);
-	ros::param::get("/agent_index",this-> agent_index);
+	ros::param::get("/agent_index",this->agent_index);
 	ros::param::get("/param_number", this->param_seed);
-	ros::param::get("/pay_obstacle_costs", this->pay_obstacle_costs);
+	ros::param::get("/pay_obs_costs", team_pay_obstacle_costs);
 	ros::param::get("/north_lat", this->north_lat);
 	ros::param::get("/south_lat", this->south_lat);
 	ros::param::get("/east_lon", this->east_lon);
@@ -33,6 +34,7 @@ Costmap::Costmap(ros::NodeHandle nHandle){
 	ros::param::get("/starting_xs", this->starting_xs);
 	ros::param::get("/starting_ys", this->starting_ys);
 
+    this->pay_obstacle_costs = team_pay_obstacle_costs[this->agent_index];
     this->test_obstacle_img = pkg_directory + this->test_obstacle_img;
     this->test_environment_img = pkg_directory + this->test_environment_img;
     
