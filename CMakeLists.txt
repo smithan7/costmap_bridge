@@ -18,9 +18,12 @@ find_package(catkin REQUIRED COMPONENTS
 )
 
 ## include opencv
-#find_package(OpenCV 2 REQUIRED)
-find_package(OpenCV 3.2.0 REQUIRED COMPONENTS core highgui imgproc imgcodecs)
-#include_directories(${OpenCV_INCLUDE_DIRS})
+## include opencv
+if($ENV{USER} MATCHES "nvidia")
+    find_package(OpenCV 2 REQUIRED)
+else()
+    find_package(OpenCV 3.2.0 REQUIRED COMPONENTS core highgui imgproc imgcodecs)
+endif()#include_directories(${OpenCV_INCLUDE_DIRS})
 
 ## custom messages
 #find_package(message_generation)
