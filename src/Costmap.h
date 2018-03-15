@@ -12,6 +12,7 @@
 #include <ros/ros.h>
 #include "nav_msgs/OccupancyGrid.h"
 #include "nav_msgs/Odometry.h"
+#include "nav_msgs/Path.h"
 #include "geometry_msgs/Pose.h"
 #include "std_msgs/MultiArrayLayout.h"
 #include "std_msgs/MultiArrayDimension.h"
@@ -60,7 +61,10 @@ public:
 	~Costmap();
 	// services
 	ros::ServiceServer a_star_path_server;
-	bool a_star_path_server_callback(custom_messages::Get_A_Star_Path::Request &req, custom_messages::Get_A_Star_Path::Response &resp);	
+	bool a_star_path_server_callback(custom_messages::Get_A_Star_Path::Request &req, custom_messages::Get_A_Star_Path::Response &resp);
+	void a_star_path_sub_callback( const nav_msgs::Path &req_in);
+	ros::Subscriber a_star_path_request_subscriber;
+	ros::Publisher a_star_path_request_publisher;	
 	
 	// subscribe to zed costmap
 	ros::Subscriber costmap_subscriber;

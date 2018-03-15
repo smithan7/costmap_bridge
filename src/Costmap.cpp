@@ -9,6 +9,7 @@
 #include "Costmap.h"
 #include "State.h"
 
+
 using namespace std;
 using namespace cv;
 
@@ -37,9 +38,6 @@ Costmap::Costmap(ros::NodeHandle nHandle){
     this->pay_obstacle_costs = team_pay_obstacle_costs[this->agent_index];
     this->test_obstacle_img = pkg_directory + this->test_obstacle_img;
     this->test_environment_img = pkg_directory + this->test_environment_img;
-    
-     
-    
 
 	this->origin_lat = (this->north_lat + this->south_lat)/2.0;
 	this->origin_lon = (this->east_lon + this->west_lon)/2.0;
@@ -115,6 +113,9 @@ Costmap::Costmap(ros::NodeHandle nHandle){
 	char temp[200];
 	int n = sprintf(temp, "/dmcts_%i/costmap_bridge/a_star_path", this->agent_index);
 	this->a_star_path_server = nHandle.advertiseService(temp, &Costmap::a_star_path_server_callback, this);
+	
+	this->a_star_path_request_subscriber = nHandle.subscribe("/costmap/a_star_path_request", 1, &Costmap::a_star_path_sub_callback, this);
+	this->a_star_path_request_publisher = nHandle.advertise<nav_msgs::Path>("/costmap/a_star_path_response", 1);
 
 	// really initialize costmap
 	this->costmapInitialized = false;
@@ -123,6 +124,71 @@ Costmap::Costmap(ros::NodeHandle nHandle){
 
 Costmap::~Costmap(){
 	delete this->utils;
+}
+
+
+void Costmap::a_star_path_sub_callback( const nav_msgs::Path &req_in){
+    cv::Point2d ls(double(req_in.poses[0].pose.position.x), double(req_in.poses[0].pose.position.y));
+	cv::Point s;
+	this->utils->local_to_cells(ls, s);
+	cv::Point2d lg(double(req_in.poses[1].pose.position.x), double(req_in.poses[1].pose.position.y));
+	cv::Point g;
+	//ROS_INFO("Costmap::a_star_path_server_callback: s: %i, %i", s.x, s.y);
+	this->utils->local_to_cells(lg, g);
+	//ROS_INFO("Costmap::a_star_path_server_callback: g: %i, %i", g.x, g.y);
+	std::vector<cv::Point> path;
+	double length = 0.0;
+	
+	if(this->display_costmap){
+	    cv::Mat tst = this->utils->displayPlot.clone();
+	    cv::circle(tst, s, 2, cv::Scalar(0,180,0), -1);
+	    cv::circle(tst, g, 2, cv::Scalar(0,0,180), -1);
+
+	    cv::namedWindow("a_star_path", CV_WINDOW_NORMAL);
+	    cv::imshow("a_star_path", tst);
+	    cv::waitKey(100);
+	}
+	
+	if(this->utils->a_star_path(s,g,path,length)){
+		nav_msgs::Path path_out;
+		
+		for(size_t i=0; i<path.size(); i++){
+			cv::Point2d l;
+			cv::Point ll(path[i].x, path[i].y);
+			this->utils->cells_to_local(ll, l);
+			//resp.xs.push_back(l.x);
+			//resp.ys.push_back(l.y);
+			
+			geometry_msgs::PoseStamped pp;
+			pp.pose.position.x = l.x;
+			pp.pose.position.y = l.y;
+			
+			path_out.poses.push_back(pp);
+			
+		}
+		//resp.path_length = length;
+		//resp.success = true;
+		
+		if(this->display_costmap){
+		    cv::Mat tst = this->utils->displayPlot.clone();
+		    cv::circle(tst, s, 2, cv::Scalar(0,180,0), -1);
+		    cv::circle(tst, g, 2, cv::Scalar(0,0,180), -1);
+
+		    for(size_t i=0; i<path.size(); i++){
+			    cv::circle(tst, path[i], 1, cv::Scalar(255,0,0), -1);
+		    }
+
+		    cv::namedWindow("a_star_path", CV_WINDOW_NORMAL);
+		    cv::imshow("a_star_path", tst);
+		    cv::waitKey(100);
+		}
+		
+		this->a_star_path_request_publisher.publish(path_out);
+		
+	}
+	else{
+		ROS_WARN("Costmap::a_star_path_server_callback: failed to find path");
+	}
 }
 
 bool Costmap::a_star_path_server_callback(custom_messages::Get_A_Star_Path::Request &req, custom_messages::Get_A_Star_Path::Response &resp){
