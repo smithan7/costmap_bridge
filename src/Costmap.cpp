@@ -18,6 +18,7 @@ Costmap::Costmap(ros::NodeHandle nHandle){
     std::vector<bool> team_pay_obstacle_costs;
 	ROS_INFO("Costmap Bridge::Costmap::Costmap: loading rosparams");
     std::string pkg_directory;
+    double inflation_box_size_meters;
 	ros::param::get("/test_environment_img", this->test_environment_img);
 	ros::param::get("/world_directory", pkg_directory);
 	ros::param::get("/test_obstacle_img", this->test_obstacle_img);
@@ -31,6 +32,8 @@ Costmap::Costmap(ros::NodeHandle nHandle){
 	ros::param::get("/meters_per_cell", this->meters_per_cell);
 	ros::param::get("/display_costmap_path", this->display_costmap);
 	ros::param::get("/inflation_iters", this->inflation_iters);
+	ros::param::get("/inflation_box_size_meters", inflation_box_size_meters);
+	ros::param::get("/inflation_sigma", this->inflation_sigma);
 	ros::param::get("/use_gazebo", this->use_gazebo);
 	ros::param::get("/starting_xs", this->starting_xs);
 	ros::param::get("/starting_ys", this->starting_ys);
@@ -41,6 +44,9 @@ Costmap::Costmap(ros::NodeHandle nHandle){
 
 	this->origin_lat = (this->north_lat + this->south_lat)/2.0;
 	this->origin_lon = (this->east_lon + this->west_lon)/2.0;
+
+	this->cells_per_meter = 1.0 / this->meters_per_cell;
+    this->inflation_box_size = inflation_box_size_meters * this->cells_per_meter;
 
 	ROS_INFO("Costmap Bridge::Costmap::Costmap: got rosparams");
 	ROS_INFO("   test_environment_img %s", this->test_environment_img.c_str());
@@ -57,6 +63,9 @@ Costmap::Costmap(ros::NodeHandle nHandle){
 	ROS_INFO("   meters_per_cell %0.2f", this->meters_per_cell);
 	ROS_INFO("   display_costmap %i", this->display_costmap);
 	ROS_INFO("   inflation_iters %i", this->inflation_iters);
+	ROS_INFO("   inflation_box_size_meters %0.2f", inflation_box_size_meters);
+	ROS_INFO("   inflation_box_size %0.2f", this->inflation_box_size);
+	ROS_INFO("   inflation_sigma %0.2f", this->inflation_sigma);
 	ROS_INFO("   use_gazebo %i", this->use_gazebo);
 	ROS_INFO("   starting_xs.size(): %i", int(this->starting_xs.size()));
 	ROS_INFO("   starting_ys.size(): %i", int(this->starting_ys.size()));

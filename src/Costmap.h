@@ -114,6 +114,7 @@ public:
 	double set_alt;
 	bool pay_obstacle_costs, display_costmap, use_gazebo;
 	int n_obstacles, inflation_iters;
+	double inflation_box_size, inflation_sigma;
 	
 	ros::Time act_time, plot_time, status_time;
 	ros::Duration act_interval, plot_interval, status_interval;

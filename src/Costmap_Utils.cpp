@@ -34,7 +34,9 @@ Costmap_Utils::Costmap_Utils(Costmap* costmap){
 
 	// set heuristic for A*
 	this->a_star_heuristic_weight = 1.0;//2.75; // 1->inf get greedier
-	this->inflation_iters = 8;
+	this->inflation_iters = costmap->inflation_iters;
+	this->inflation_box_size = costmap->inflation_box_size;
+	this->inflation_sigma = costmap->inflation_sigma;
 
 	// ros's occupancy grid values
 	this->ros_unknown = -1;
@@ -124,8 +126,6 @@ Costmap_Utils::Costmap_Utils(Costmap* costmap){
 	this->need_initialization = false;
 	ROS_INFO("Costmap_Utils::initialize_costmap::complete");
 
-
-
 	//Test A Star Stuff
 	//cv::Point s(50,50);
 	//cv::Point g(500,50);
@@ -161,8 +161,8 @@ void Costmap_Utils::build_cells_mat(){
 
 void Costmap_Utils::get_obs_mat(){
 
-	this->Obs_Mat = cv::Mat::zeros(cv::Size(int(this->map_width_meters), int(this->map_height_meters)), CV_8UC1);
-	this->Env_Mat = cv::Mat::zeros(cv::Size(int(this->map_width_meters), int(this->map_height_meters)), CV_8UC3);
+	this->Obs_Mat = cv::Mat::zeros(cv::Size(int(this->map_width_meters*this->cells_per_meter), int(this->map_height_meters*this->cells_per_meter)), CV_8UC1);
+	this->Env_Mat = cv::Mat::zeros(cv::Size(int(this->map_width_meters*this->cells_per_meter), int(this->map_height_meters*this->cells_per_meter)), CV_8UC3);
 
 	cv::Mat temp_obs = cv::imread(this->test_obstacle_img, CV_LOAD_IMAGE_GRAYSCALE);
 	cv::Mat temp_env = cv::imread(this->test_environment_img, CV_LOAD_IMAGE_COLOR);
@@ -184,15 +184,18 @@ void Costmap_Utils::get_obs_mat(){
 		cv::resize(temp_env, this->Env_Mat, this->Env_Mat.size());
 	}
 
-
 	cv::Mat s = cv::Mat::zeros(this->Obs_Mat.size(), CV_8UC1);
 	for(int i=0; i<this->inflation_iters; i++){
-		cv::blur(this->Obs_Mat,s,cv::Size(5,5));
+		cv::GaussianBlur(this->Obs_Mat,s,cv::Size(this->inflation_box_size, this->inflation_box_size), this->inflation_sigma, this->inflation_sigma);
 		cv::max(this->Obs_Mat,s,this->Obs_Mat);
 	}
 
-	//cv::namedWindow("DMCTS_World::World::seed_obs_mat:Obstacles", cv::WINDOW_NORMAL);
-	//cv::imshow("DMCTS_World::World::seed_obs_mat:Obstacles", this->Env_Mat);
+	cv::namedWindow("Costmap_Utils::get_obs_mat:Obstacles", cv::WINDOW_NORMAL);
+	cv::imshow("Costmap_Utils::get_obs_mat:Obstacles", this->Obs_Mat);
+	cv::waitKey(10);
+
+	//cv::namedWindow("DMCTS_World::World::seed_obs_mat:Env_Mat", cv::WINDOW_NORMAL);
+	//cv::imshow("DMCTS_World::World::seed_obs_mat:Env_Mat", this->Env_Mat);
 	//cv::waitKey(0);
 }
 
@@ -200,8 +203,8 @@ void Costmap_Utils::create_obs_mat(){
 
 	this->map_width_meters = 100.0;
 	this->map_height_meters = 100.0;
-	this->Obs_Mat = cv::Mat::zeros(cv::Size(int(this->map_width_meters), int(this->map_height_meters)), CV_8UC1);
-	this->Env_Mat = cv::Mat::zeros(cv::Size(int(this->map_width_meters), int(this->map_height_meters)), CV_8UC3);
+	this->Obs_Mat = cv::Mat::zeros(cv::Size(int(this->map_width_meters*this->cells_per_meter), int(this->map_height_meters*this->cells_per_meter)), CV_8UC1);
+	this->Env_Mat = cv::Mat::zeros(cv::Size(int(this->map_width_meters*this->cells_per_meter), int(this->map_height_meters*this->cells_per_meter)), CV_8UC3);
 	
 	this->obstacles.clear();
 	//ROS_INFO("DMCTS_World::World::make_obs_mat: making obstacles");

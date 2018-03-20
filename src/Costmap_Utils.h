@@ -114,6 +114,7 @@ private:
 	double a_star_heuristic_weight, euclid_threshold;
 
 	int inflation_iters;
+	double inflation_box_size, inflation_sigma;
 
 	double get_occ_penalty(State &state);
 	bool state_to_bin( State &s, cv::Point &b);
