@@ -19,8 +19,8 @@ Costmap::Costmap(ros::NodeHandle nHandle){
 	ROS_INFO("Costmap Bridge::Costmap::Costmap: loading rosparams");
     std::string pkg_directory;
     double inflation_box_size_meters;
+	ros::param::get("/package_directory", pkg_directory);
 	ros::param::get("/test_environment_img", this->test_environment_img);
-	ros::param::get("/world_directory", pkg_directory);
 	ros::param::get("/test_obstacle_img", this->test_obstacle_img);
 	ros::param::get("/agent_index",this->agent_index);
 	ros::param::get("/param_number", this->param_seed);
@@ -49,6 +49,7 @@ Costmap::Costmap(ros::NodeHandle nHandle){
     this->inflation_box_size = inflation_box_size_meters * this->cells_per_meter;
 
 	ROS_INFO("Costmap Bridge::Costmap::Costmap: got rosparams");
+	ROS_INFO("   package directory %s", pkg_directory.c_str());
 	ROS_INFO("   test_environment_img %s", this->test_environment_img.c_str());
 	ROS_INFO("   test_obstacle_img %s", this->test_obstacle_img.c_str());
 	ROS_INFO("   agent_index %i", this->agent_index);
