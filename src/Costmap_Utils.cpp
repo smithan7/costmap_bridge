@@ -116,7 +116,7 @@ Costmap_Utils::Costmap_Utils(Costmap* costmap){
 	// reset randomization
 	srand(this->rand_seed);
 	this->get_obs_mat(); // create random / or load obstacles
-	ROS_INFO("DMCTS_world_node::   Word::World(): mat size: %i, %i (cells)", this->Obs_Mat.cols, this->Obs_Mat.rows);
+	ROS_INFO("Costmap_Utils::   Costmap_Utils::Costmap_Utils(): mat size: %i, %i (cells)", this->Obs_Mat.cols, this->Obs_Mat.rows);
 	
 	this->build_cells_mat();
 	this->build_display_plot();
@@ -173,7 +173,7 @@ void Costmap_Utils::get_obs_mat(){
 
 	if(!temp_obs.data || !temp_env.data){
 		this->create_obs_mat();
-		ROS_WARN("World::seed_img::Could NOT load img, creating img");
+		ROS_WARN("Costmap_Utils::seed_img::Could NOT load img, creating img");
 		return;
 	}
 	else{
